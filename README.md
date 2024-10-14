@@ -2,11 +2,11 @@
 cpp project.
 
 ## skills
-C++ IOCP Server
-Redis with hiredis
-MSSQL with odbc
-(to-do) rapidJson
-(to-do) openssl
+C++ IOCP Server <br/>
+Redis with hiredis <br/>
+MSSQL with odbc <br/>
+(to-do) rapidJson <br/>
+(to-do) openssl <br/>
 
 ## 메모리풀 및 커넥션풀
 메모리의 할당 및 해제에는 오버헤드가 발생한다. <br/>
