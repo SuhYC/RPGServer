@@ -19,15 +19,11 @@ namespace NetworkPacket
 
 		~PacketPool()
 		{
-			int cnt = 0;
 			PacketData* tmp;
 			while (q.try_pop(tmp))
 			{
-				cnt++;
 				delete tmp;
 			}
-
-			std::cout << "Packet:" << cnt << "\n";
 		}
 
 		void Deallocate(PacketData* pPacket_)

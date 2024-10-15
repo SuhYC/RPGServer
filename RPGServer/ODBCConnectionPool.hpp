@@ -118,6 +118,12 @@ namespace MSSQL
 
 			SQLAllocHandle(SQL_HANDLE_STMT, hdbc, &hstmt);
 
+			if (hstmt == INVALID_HANDLE_VALUE)
+			{
+				SQLFreeHandle(SQL_HANDLE_DBC, hdbc);
+				return false;
+			}
+
 			q.push(hstmt);
 			HDBCs.push_back(hdbc);
 		}

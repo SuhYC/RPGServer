@@ -24,6 +24,7 @@
     <ProjectGuid>{dad11bd9-b899-42de-8db7-bbf5f245358d}</ProjectGuid>
     <RootNamespace>RPGServer</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>RPGServer</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -133,11 +134,13 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CharInfo.hpp" />
     <ClInclude Include="CharList.hpp" />
     <ClInclude Include="Connection.hpp" />
     <ClInclude Include="Database.hpp" />
     <ClInclude Include="Define.hpp" />
     <ClInclude Include="IOCP.hpp" />
+    <ClInclude Include="MemoryPool.hpp" />
     <ClInclude Include="ODBCConnectionPool.hpp" />
     <ClInclude Include="PacketData.hpp" />
     <ClInclude Include="PacketPool.hpp" />

@@ -8,6 +8,14 @@
 class CharList
 {
 public:
+	~CharList()
+	{
+		if (mp_Data != nullptr)
+		{
+			delete[] mp_Data;
+		}
+	}
+
 	void Init(const size_t count_)
 	{
 		m_Size = count_;
@@ -36,6 +44,11 @@ public:
 	}
 
 	size_t size() const { return m_Size; }
+
+	std::wstring ToJson()
+	{
+
+	}
 
 private:
 	int* mp_Data;
