@@ -3,10 +3,7 @@
 #include "PacketData.hpp"
 #include "CharInfo.hpp"
 #include "RedisConnectionPool.hpp"
-#include <thread>
-#include <concurrent_queue.h>
-#include <vector>
-#include <codecvt>
+#include "Json.hpp"
 
 class RedisManager
 {
@@ -34,8 +31,13 @@ public:
 	// Create, Renew Info of Char on Redis(Cache)
 	bool UpdateCharInfo(const int charNo_, CharInfo* pInfo_)
 	{
+		if (pInfo_ == nullptr)
+		{
+			return false;
+		}
+
 		std::wstring key = std::to_wstring(charNo_) + L"CharInfo";
-		std::wstring value = pInfo_->ToJson();
+		std::string value = m_jsonMaker.ToJsonString(*pInfo_);
 
 		if (Set(key, value))
 		{
@@ -46,20 +48,25 @@ public:
 
 	bool GetCharInfo(const int charNo_, CharInfo* out_)
 	{
+		if (out_ == nullptr)
+		{
+			return false;
+		}
+
 		std::wstring key = std::to_wstring(charNo_) + L"CharInfo";
-		std::wstring value;
+		std::string value;
 
 		if (Get(key, value) == false)
 		{
 			return false;
 		}
 
-		// !! jsonstr to charinfo* !!
-		// out_->CharNo = ...;
-		// out_->Level = ...;
-		// ...
+		if (m_jsonMaker.ToCharInfo(value, *out_))
+		{
+			return true;
+		}
 
-		return true;
+		return false;
 	}
 
 	void LogOut(const int userCode_)
@@ -72,7 +79,7 @@ public:
 private:
 	// str(usercode+datatype) : key_
 	// jsonstr : value_
-	bool Set(const std::wstring& key_, const std::wstring& value_)
+	bool Set(const std::wstring& key_, const std::string& value_)
 	{
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "SET %s %s", key_.c_str(), value_.c_str()));
@@ -80,9 +87,9 @@ private:
 		DeallocateConnection(rc);
 		if (reply != nullptr)
 		{
-			if (reply->type == REDIS_REPLY_INTEGER)
+			if (reply->type == REDIS_REPLY_STATUS)
 			{
-				if (reply->integer == 1)
+				if (std::string(reply->str) == "OK")
 				{
 					freeReplyObject(reply);
 					return true;
@@ -95,7 +102,7 @@ private:
 			}
 			else
 			{
-				std::cerr << "RedisManager::SetNx : Not integer reply.\n";
+				std::cerr << "RedisManager::Set : Not Status reply.\n";
 			}
 		}
 
@@ -190,7 +197,7 @@ private:
 		return false;
 	}
 
-	bool Get(const std::wstring& key_, std::wstring& out_)
+	bool Get(const std::wstring& key_, std::string& out_)
 	{
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "GET %s", key_.c_str()));
@@ -200,8 +207,7 @@ private:
 		{
 			if (reply->type == REDIS_REPLY_STRING)
 			{
-				std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-				out_ = converter.from_bytes(reply->str);
+				out_ = std::string(reply->str, reply->len);
 
 				freeReplyObject(reply);
 				return true;
@@ -212,7 +218,7 @@ private:
 		return false;
 	}
 
-	bool Get(const int key_, std::wstring& out_)
+	bool Get(const int key_, std::string& out_)
 	{
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "GET %d", key_));
@@ -222,8 +228,7 @@ private:
 		{
 			if (reply->type == REDIS_REPLY_STRING)
 			{
-				std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-				out_ = converter.from_bytes(reply->str);
+				out_ = std::string(reply->str, reply->len);
 
 				freeReplyObject(reply);
 				return true;
@@ -249,6 +254,5 @@ private:
 	}
 
 	std::unique_ptr<Redis::ConnectionPool> m_ConnectionPool;
-
-	bool mIsRun = false;
+	JsonMaker m_jsonMaker;
 };

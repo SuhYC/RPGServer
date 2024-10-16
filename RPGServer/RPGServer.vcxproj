@@ -71,6 +71,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ExternalIncludePath>C:\Users\psyc\source\lib\rapidjson-master\include;$(ExternalIncludePath)</ExternalIncludePath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -140,6 +143,7 @@
     <ClInclude Include="Database.hpp" />
     <ClInclude Include="Define.hpp" />
     <ClInclude Include="IOCP.hpp" />
+    <ClInclude Include="Json.hpp" />
     <ClInclude Include="MemoryPool.hpp" />
     <ClInclude Include="ODBCConnectionPool.hpp" />
     <ClInclude Include="PacketData.hpp" />
