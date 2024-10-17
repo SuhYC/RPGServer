@@ -51,6 +51,7 @@ public:
 		m_CharListPool.reset();
 	}
 
+	// eReturnCode : SIGNUP_FAIL, SIGNUP_SUCCESS, SIGNUP_ALREADY_IN_USE
 	eReturnCode SignUp(std::wstring& id_, std::wstring& pw_)
 	{
 		if (!CheckPWIsValid(pw_) || !CheckIDIsValid(id_))
@@ -58,18 +59,6 @@ public:
 			// 유효하지 않은 입력
 			return eReturnCode::SIGNUP_FAIL;
 		}
-
-		SQLWCHAR query[1024] = { 0 };
-		sprintf_s((char*)query, 1024,
-			"IF NOT EXISTS (SELECT 1 FROM LOGINDATA WHERE ID = '%s') "
-			"BEGIN "
-			"    INSERT INTO LOGINDATA (USERID, PASSWORD) VALUES ('%s', '%s'); "
-			"    SELECT 'S' AS Result; "
-			"END "
-			"ELSE "
-			"BEGIN "
-			"    SELECT 'F' AS Result; "
-			"END", id_.c_str(), id_.c_str(), pw_.c_str());
 
 		HANDLE hstmt = m_Pool->Allocate();
 
@@ -79,51 +68,72 @@ public:
 			return eReturnCode::SIGNUP_FAIL;
 		}
 
-		SQLPrepare(hstmt, query, SQL_NTS);
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"IF NOT EXISTS (SELECT 1 FROM LOGINDATA WHERE ID = ?) "
+			L"BEGIN "
+			L"    INSERT INTO LOGINDATA (USERID, PASSWORD) VALUES (?, ?); "
+			L"    SELECT 'S' AS Result; "
+			L"END "
+			L"ELSE "
+			L"BEGIN "
+			L"    SELECT 'F' AS Result; "
+			L"END", SQL_NTS);
+
+		SQLLEN idLength = id_.length();
+		SQLLEN pwLength = pw_.length();
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)id_.c_str(), 0, &idLength);
+		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)id_.c_str(), 0, &idLength);
+		SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)pw_.c_str(), 0, &pwLength);
 
 		SQLRETURN retCode = SQLExecute(hstmt);
 
-		if (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
-		{
-			SQLLEN num_rows;
-			SQLCHAR result_message[1024];
-			retCode = SQLFetch(hstmt);
-			if (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
-			{
-				SQLGetData(hstmt, 1, SQL_C_CHAR, result_message, sizeof(result_message), &num_rows);
-				if (DB_DEBUG)
-				{
-					std::cout << result_message << "\n";
-				}
-
-				if (!strcmp((const char*)result_message, "S"))
-				{
-					ReleaseHandle(hstmt);
-					return eReturnCode::SIGNUP_SUCCESS;
-				}
-				// 'F' -> Failed to INSERT : Already In Use
-				else
-				{
-					ReleaseHandle(hstmt);
-					return eReturnCode::SIGNUP_ALREADY_IN_USE;
-				}
-			}
-			// SQLFetch Failed
-			else
-			{
-				ReleaseHandle(hstmt);
-				std::cerr << "Database::SIGNUP : Failed to Fetch\n";
-				return eReturnCode::SIGNUP_FAIL;
-			}
-		}
-		// SQLExcute Failed
-		else
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
 			ReleaseHandle(hstmt);
 			std::cerr << "Database::SIGNUP : Failed to Execute\n";
 			return eReturnCode::SIGNUP_FAIL;
 		}
 
+		SQLWCHAR result_message[2]; // 'S' or 'F'
+		SQLLEN resultlen;
+		retCode = SQLFetch(hstmt);
+
+		// SQLFetch Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			std::cerr << "Database::SIGNUP : Failed to Fetch\n";
+			return eReturnCode::SIGNUP_FAIL;
+		}
+
+		SQLRETURN dataRet = SQLGetData(hstmt, 1, SQL_C_WCHAR, result_message, sizeof(result_message) / sizeof(result_message[0]), &resultlen);
+				
+		// SQLGetData Failed
+		if (dataRet == SQL_SUCCESS || dataRet == SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			std::wcerr << L"Database::SIGNUP : Failed to Get Data\n";
+			return eReturnCode::SIGNUP_FAIL;
+		}
+
+		
+		if (DB_DEBUG)
+		{
+			std::wcout << result_message[0] << "\n";
+		}
+
+		if (result_message[0] == L'S')
+		{
+			ReleaseHandle(hstmt);
+			return eReturnCode::SIGNUP_SUCCESS;
+		}
+		// 'F' -> Failed to INSERT : Already In Use
+		else
+		{
+			ReleaseHandle(hstmt);
+			return eReturnCode::SIGNUP_ALREADY_IN_USE;
+		}
 	}
 
 	// usercode:int로 리턴.
@@ -136,18 +146,6 @@ public:
 			return CLIENT_NOT_CERTIFIED;
 		}
 
-		SQLWCHAR query[1024] = { 0 };
-
-		sprintf_s((char*)query, 1024,
-			"IF EXISTS (SELECT 1 FROM LOGINDATA WHERE USERID = '%s' AND PASSWORD = '%s') "
-			"BEGIN "
-			"    SELECT USERCODE WHERE ID = '%s' AS Result; "
-			"END "
-			"ELSE "
-			"BEGIN "
-			"    SELECT 0 AS Result; "
-			"END", id_.c_str(), pw_.c_str(), id_.c_str());
-
 		HANDLE hstmt = m_Pool->Allocate();
 		
 		if (hstmt == INVALID_HANDLE_VALUE)
@@ -156,56 +154,81 @@ public:
 			return CLIENT_NOT_CERTIFIED;
 		}
 
-		SQLPrepare(hstmt, query, SQL_NTS);
+		SQLLEN idLength = id_.length();
+		SQLLEN pwLength = pw_.length();
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT USERCODE FROM LOGINDATA WHERE ID = ? AND PASSWORD = ?; "
+			, SQL_NTS);
+
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)id_.c_str(), 0, &idLength);
+		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)pw_.c_str(), 0, &pwLength);
 
 		SQLRETURN retCode = SQLExecute(hstmt);
 
-		if (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
-			SQLLEN num_rows;
-			long result = 0;
-			retCode = SQLFetch(hstmt);
-			if (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
-			{
-				SQLGetData(hstmt, 1, SQL_C_LONG, &result, sizeof(long), &num_rows);
-				if (DB_DEBUG)
-				{
-					std::cout << "SIGNIN RESULT : " << result << "\n";
-				}
+			std::wcerr << L"DB::SIGNIN : Failed to Execute\n";
 
-				// CLIENT_NOT_CERTIFIED -> Failed to UPDATE : INCORRECT OR ALREADY LOGGED IN
-				if (result == CLIENT_NOT_CERTIFIED)
-				{
-					ReleaseHandle(hstmt);
-					return CLIENT_NOT_CERTIFIED;
-				}
-				// USERCODE -> SUCCESS to Signin
-				else
-				{
-					ReleaseHandle(hstmt);
+			SQLWCHAR sqlState[6], errorMsg[256];
+			SQLINTEGER nativeError;
+			SQLSMALLINT msgLen;
+			SQLRETURN ret = SQLGetDiagRec(SQL_HANDLE_STMT, hstmt, 1, sqlState, &nativeError, errorMsg, sizeof(errorMsg) / sizeof(errorMsg[0]), &msgLen);
 
-					if (TrySignIn(result, ip_))
-					{
-						return result;
-					}
-					return ALREADY_HAVE_SESSION; // other user using this id.
-				}
-			}
-			// SQLFetch Failed
-			else
+			if (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO)
 			{
-				std::cerr << "DB::SIGNUP : Failed to Fetch\n";
-				ReleaseHandle(hstmt);
-				return CLIENT_NOT_CERTIFIED;
+				std::wcerr << L"DB::SIGNUP : Error:" << errorMsg << L" (SQLState: " << sqlState << ')\n';
 			}
-		}
-		// SQLExcute Failed
-		else
-		{
-			std::cerr << "DB::SIGNUP : Failed to Execute\n";
+
 			ReleaseHandle(hstmt);
 			return CLIENT_NOT_CERTIFIED;
 		}
+
+		long result = 0;
+		retCode = SQLFetch(hstmt);
+
+		// CLIENT_NOT_CERTIFIED : WRONG ID OR PW
+		if (retCode == SQL_NO_DATA)
+		{
+			ReleaseHandle(hstmt);
+			return CLIENT_NOT_CERTIFIED;
+		}
+
+		// SQLFetch Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"DB::SIGNIN : Failed to Fetch\n";
+			ReleaseHandle(hstmt);
+			return CLIENT_NOT_CERTIFIED;
+		}
+
+		SQLLEN num_rows;
+		SQLRETURN dataRet = SQLGetData(hstmt, 1, SQL_C_LONG, &result, sizeof(result), &num_rows);
+				
+		// SQLGetData Failed
+		if (dataRet != SQL_SUCCESS && dataRet != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"DB::SIGNIN : Failed to Get Data\n";
+			ReleaseHandle(hstmt);
+			return CLIENT_NOT_CERTIFIED;
+		}
+
+		if (DB_DEBUG)
+		{
+			std::cout << "SIGNIN RESULT : " << result << "\n";
+		}
+
+		ReleaseHandle(hstmt);
+		if (TrySignIn(result, ip_))
+		{
+			return result;
+		}
+		else
+		{
+			return ALREADY_HAVE_SESSION; // other user using this id.
+		}
+
 	}
 
 	void LogOut(const int userCode_)
@@ -220,21 +243,134 @@ public:
 	{
 		CharInfo* ret = m_CharInfoPool->Allocate();
 
+		// CacheServer 먼저 확인
 		if (m_RedisManager.GetCharInfo(charNo_, ret))
 		{
 			return ret;
 		}
 
-		SQLWCHAR query[1024] = { 0 };
+		HANDLE hstmt = m_Pool->Allocate();
 
-		// 쿼리 작성 및 쿼리 결과에 따른 ret init 후 리턴.
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT CHARNAME, LV, EXPERIENCE, STATPOINT, HEALTHPOINT, MANAPOINT, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE FROM CHARINFO WHERE CHARNO = ?;",
+			SQL_NTS);
+
+		int paramValue = charNo_;
+		SQLLEN paramValueLength = 0;
+
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &paramValue, 0, &paramValueLength);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"Database::GetCharInfo : Failed to Execute\n";
+			ReleaseHandle(hstmt);
+			m_CharInfoPool->Deallocate(ret);
+			return nullptr;
+		}
+
+		retCode = SQLFetch(hstmt);
+
+		// SQLFetch Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"Database::GetCharInfo : Failed to Fetch\n";
+			ReleaseHandle(hstmt);
+			m_CharInfoPool->Deallocate(ret);
+			return nullptr;
+		}
+
+		SQLLEN len;
+		SQLGetData(hstmt, 1, SQL_C_WCHAR, ret->CharName, sizeof(ret->CharName) / sizeof(ret->CharName[0]), &len);
+		SQLGetData(hstmt, 2, SQL_C_LONG, &(ret->Level), 0, &len);
+		SQLGetData(hstmt, 3, SQL_C_LONG, &(ret->Experience), 0, &len);
+		SQLGetData(hstmt, 4, SQL_C_LONG, &(ret->StatPoint), 0, &len);
+		SQLGetData(hstmt, 5, SQL_C_LONG, &(ret->HealthPoint), 0, &len);
+		SQLGetData(hstmt, 6, SQL_C_LONG, &(ret->ManaPoint), 0, &len);
+		SQLGetData(hstmt, 7, SQL_C_LONG, &(ret->Strength), 0, &len);
+		SQLGetData(hstmt, 8, SQL_C_LONG, &(ret->Dexterity), 0, &len);
+		SQLGetData(hstmt, 9, SQL_C_LONG, &(ret->Intelligence), 0, &len);
+		SQLGetData(hstmt, 10, SQL_C_LONG, &(ret->Mentality), 0, &len);
+		SQLGetData(hstmt, 11, SQL_C_LONG, &(ret->Gold), 0, &len);
+		SQLGetData(hstmt, 12, SQL_C_LONG, &(ret->LastMapCode), 0, &len);
+
+		ReleaseHandle(hstmt);
+
+		// 레디스에 등록하기
+		if (m_RedisManager.UpdateCharInfo(charNo_, ret) == false)
+		{
+			std::wcerr << L"Database::GetCharInfo : 레디스에 정보 등록 실패\n";
+		}
+
+		return ret;
 	}
 
 	// CharList Class 만들어야함 + 메모리풀도 -> 패킷데이터랑 템플릿으로 묶을까?
 	// CharNo 여러개를 담아 온다.
 	CharList* GetCharList(const int userCode_)
 	{
+		HANDLE hstmt = m_Pool->Allocate();
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT CHARNO FROM CHARLIST WHERE USERNO = ?;",
+			SQL_NTS);
 
+		int paramValue = userCode_;
+		SQLLEN paramLen = 0;
+
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &paramValue, 0, &paramLen);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"Database::GetCharList : Failed to Execute\n";
+			ReleaseHandle(hstmt);
+			return nullptr;
+		}
+
+		std::vector<int> charCodes;
+		int charCode = 0;
+		SQLLEN len = 0;
+
+		while (true)
+		{
+			retCode = SQLFetch(hstmt);
+			// End of Result
+			if (retCode == SQL_NO_DATA)
+			{
+				break;
+			}
+
+			// SQLFetch Failed
+			if (retCode == SQL_ERROR)
+			{
+				std::wcerr << L"Database::GetCharList : Failed to Fetch\n";
+				ReleaseHandle(hstmt);
+				return nullptr;
+			}
+
+			SQLGetData(hstmt, 1, SQL_C_LONG, &charCode, 0, &len);
+			charCodes.push_back(charCode);
+		}
+
+		CharList* ret = m_CharListPool->Allocate();
+		ret->Init(charCodes.size());
+		for (size_t i = 0; i < charCodes.size(); i++)
+		{
+			try {
+				(*ret)[i] = charCodes[i];
+			}
+			catch (std::out_of_range e)
+			{
+				std::wcerr << e.what() << "index : " << i << '\n';
+			}
+		}
+
+		ReleaseHandle(hstmt);
+		return ret;
 	}
 
 	void ReleaseObject(CharInfo* pObj_)
@@ -262,11 +398,15 @@ private:
 
 	}
 
+	// 레디스의 SetNx를 이용, 해당 유저코드로 로그인한 유저가 없다면 등록한다.
+	// true : success to SignIn
+	// false : fail to SignIn (Already In Use)
 	bool TrySignIn(const int usercode_, const int ip_)
 	{
 		return m_RedisManager.MakeSession(usercode_, ip_);
 	}
 
+	// 사용한 구문핸들의 상태를 초기화하고 재사용할 수 있도록 커넥션풀에 넣는다.
 	void ReleaseHandle(HANDLE stmt_)
 	{
 		SQLCloseCursor(stmt_);

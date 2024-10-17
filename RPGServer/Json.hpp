@@ -7,11 +7,26 @@
 #include "CharInfo.hpp"
 #include <codecvt>
 
+/*
+* wstring을 codecvt한 것과 string은 서로 다른 값을 가진다.
+* -> 인코딩이 서로 다르기 때문.
+*  문자열은 wstring으로만 입력받는게 나을듯.
+* 구조체->json : struct -> string
+* json->구조체 : string -> struct
+* 
+* !!json문자열은 레디스영역을 벗어나지 않도록 할 것!!
+*/ 
+
 class JsonMaker
 {
 public:
-	std::string ToJsonString(const CharInfo& pInfo_)
+	bool ToJsonString(const CharInfo* pInfo_, std::string& out_)
 	{
+		if (pInfo_ == nullptr)
+		{
+			return false;
+		}
+
 		rapidjson::Document doc;
 		doc.SetObject();
 
@@ -21,21 +36,21 @@ public:
 		doc.AddMember("Type", "CharInfo", allocator);
 
 		// int Members
-		doc.AddMember("CharNo", pInfo_.CharNo, allocator);
-		doc.AddMember("Level", pInfo_.Level, allocator);
-		doc.AddMember("Experience", pInfo_.Experience, allocator);
-		doc.AddMember("StatPoint", pInfo_.StatPoint, allocator);
-		doc.AddMember("HealthPoint", pInfo_.HealthPoint, allocator);
-		doc.AddMember("ManaPoint", pInfo_.ManaPoint, allocator);
-		doc.AddMember("Strength", pInfo_.Strength, allocator);
-		doc.AddMember("Dexteriry", pInfo_.Dexteriry, allocator);
-		doc.AddMember("Intelligence", pInfo_.Intelligence, allocator);
-		doc.AddMember("Mentality", pInfo_.Mentality, allocator);
-		doc.AddMember("Gold", pInfo_.Gold, allocator);
-		doc.AddMember("LastMapCode", pInfo_.LastMapCode, allocator);
+		doc.AddMember("CharNo", pInfo_->CharNo, allocator);
+		doc.AddMember("Level", pInfo_->Level, allocator);
+		doc.AddMember("Experience", pInfo_->Experience, allocator);
+		doc.AddMember("StatPoint", pInfo_->StatPoint, allocator);
+		doc.AddMember("HealthPoint", pInfo_->HealthPoint, allocator);
+		doc.AddMember("ManaPoint", pInfo_->ManaPoint, allocator);
+		doc.AddMember("Strength", pInfo_->Strength, allocator);
+		doc.AddMember("Dexterity", pInfo_->Dexterity, allocator);
+		doc.AddMember("Intelligence", pInfo_->Intelligence, allocator);
+		doc.AddMember("Mentality", pInfo_->Mentality, allocator);
+		doc.AddMember("Gold", pInfo_->Gold, allocator);
+		doc.AddMember("LastMapCode", pInfo_->LastMapCode, allocator);
 
 		// wchar_t[] Member
-		std::string utf8str = m_cvt.to_bytes(pInfo_.CharName);
+		std::string utf8str = m_cvt.to_bytes(pInfo_->CharName);
 		doc.AddMember("CharName", rapidjson::Value().SetString(utf8str.c_str(), static_cast<rapidjson::SizeType>(utf8str.length())), allocator);
 
 		// Make JsonString
@@ -43,7 +58,9 @@ public:
 		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
 		doc.Accept(writer);
 
-		return buffer.GetString();
+		out_ = buffer.GetString();
+
+		return true;
 	}
 
 	bool ToCharInfo(std::string& jsonStr_, CharInfo& out_)
@@ -71,7 +88,7 @@ public:
 			out_.HealthPoint = doc["StatPoint"].GetInt();
 			out_.ManaPoint = doc["ManaPoint"].GetInt();
 			out_.Strength = doc["Strength"].GetInt();
-			out_.Dexteriry = doc["Dexteriry"].GetInt();
+			out_.Dexterity = doc["Dexterity"].GetInt();
 			out_.Intelligence = doc["Intelligence"].GetInt();
 			out_.Mentality = doc["Mentality"].GetInt();
 			out_.Gold = doc["Gold"].GetInt();
@@ -81,6 +98,11 @@ public:
 		{
 			return false;
 		}
+	}
+
+	std::string ToJsonString(CharList& charlist_)
+	{
+
 	}
 
 private:

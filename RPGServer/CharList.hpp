@@ -18,21 +18,32 @@ public:
 
 	void Init(const size_t count_)
 	{
-		m_Size = count_;
 		if (mp_Data != nullptr)
 		{
 			delete[] mp_Data;
 		}
-		mp_Data = new int[count_];
+
+		try {
+			mp_Data = new int[count_];
+			m_Size = count_;
+		}
+		catch (std::bad_alloc e)
+		{
+			std::cerr << "메모리 부족\n";
+		}
 	}
 
-	void release()
+	void release() noexcept
 	{
 		m_Size = 0;
-		delete[] mp_Data;
-		mp_Data = nullptr;
+		if (mp_Data != nullptr)
+		{
+			delete[] mp_Data;
+			mp_Data = nullptr;
+		}
 	}
 
+	// can throw out_of_range
 	int& operator[](const size_t index_)
 	{
 		if (index_ < m_Size)
@@ -44,11 +55,6 @@ public:
 	}
 
 	size_t size() const { return m_Size; }
-
-	std::wstring ToJson()
-	{
-
-	}
 
 private:
 	int* mp_Data;

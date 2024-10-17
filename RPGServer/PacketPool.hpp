@@ -40,8 +40,15 @@ namespace NetworkPacket
 				return ret;
 			}
 
-			std::cerr << "메모리 풀 부족\n";
-			ret = new PacketData();
+			std::cerr << "PacketPool::Allocate : 메모리 풀 부족\n";
+			try
+			{
+				ret = new PacketData();
+			}
+			catch (std::bad_alloc e)
+			{
+				std::cerr << "bad_alloc : 메모리 부족\n";
+			}
 
 			return ret;
 		}

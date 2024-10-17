@@ -12,7 +12,7 @@ public:
 	int HealthPoint;
 	int ManaPoint;
 	int Strength;
-	int Dexteriry;
+	int Dexterity;
 	int Intelligence;
 	int Mentality;
 	int Gold;

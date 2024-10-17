@@ -37,7 +37,8 @@ public:
 		}
 
 		std::wstring key = std::to_wstring(charNo_) + L"CharInfo";
-		std::string value = m_jsonMaker.ToJsonString(*pInfo_);
+		std::string value;
+		m_jsonMaker.ToJsonString(pInfo_, value);
 
 		if (Set(key, value))
 		{
