@@ -5,7 +5,7 @@ cpp project.
 C++ IOCP Server <br/>
 Redis with hiredis <br/>
 MSSQL with odbc <br/>
-(to-do) rapidJson <br/>
+rapidJson <br/>
 (to-do) openssl <br/>
 
 ## 메모리풀 및 커넥션풀
@@ -20,7 +20,6 @@ Redis를 사용한다. 레디스에 해당 정보가 있는지 확인한 후 없
 [기존에 계획하던 인증서버](https://github.com/SuhYC/Authentication_Server)의 형태;로그인상태정보를 MSSQL에 저장하는 것에서 Redis에 저장하는 것으로 변경.<br/>
 
 ## Todo
-```rapidJson```사용하여 전송할 데이터 문자열화 <br/>
 ```openssl```사용하여 전송데이터 암호화 <br/>
 ```base64```사용하여 암호화된 데이터 내의 NULL값 제거 <br/>
 셋 다 기존 작성했던 헤더 가져올 예정.
