@@ -139,7 +139,7 @@ public:
 	// usercode:int로 리턴.
 	// 0 : Client Not Certified.
 	// -1 : Already Have Session
-	int SignIn(std::wstring& id_, std::wstring& pw_, int ip_)
+	int SignIn(const std::wstring& id_, const std::wstring& pw_, const std::wstring& ip_)
 	{
 		if (!CheckIDIsValid(id_) || !CheckPWIsValid(pw_))
 		{
@@ -299,7 +299,7 @@ public:
 		ReleaseHandle(hstmt);
 
 		// 레디스에 등록하기
-		if (m_RedisManager.UpdateCharInfo(charNo_, ret) == false)
+		if (m_RedisManager.CreateCharInfo(charNo_, ret) == false)
 		{
 			std::wcerr << L"Database::GetCharInfo : 레디스에 정보 등록 실패\n";
 		}
@@ -373,14 +373,14 @@ public:
 		return ret;
 	}
 
-	void ReleaseObject(CharInfo* pObj_)
+	void ReleaseObject(CharInfo* const pObj_)
 	{
 		m_CharInfoPool->Deallocate(pObj_);
 
 		return;
 	}
 
-	void ReleaseObject(CharList* pObj_)
+	void ReleaseObject(CharList* const pObj_)
 	{
 		m_CharListPool->Deallocate(pObj_);
 
@@ -388,12 +388,12 @@ public:
 	}
 
 private:
-	bool CheckIDIsValid(std::wstring& id_)
+	bool CheckIDIsValid(const std::wstring& id_)
 	{
 
 	}
 
-	bool CheckPWIsValid(std::wstring& pw_)
+	bool CheckPWIsValid(const std::wstring& pw_)
 	{
 
 	}
@@ -401,7 +401,7 @@ private:
 	// 레디스의 SetNx를 이용, 해당 유저코드로 로그인한 유저가 없다면 등록한다.
 	// true : success to SignIn
 	// false : fail to SignIn (Already In Use)
-	bool TrySignIn(const int usercode_, const int ip_)
+	bool TrySignIn(const int usercode_, const std::wstring& ip_)
 	{
 		return m_RedisManager.MakeSession(usercode_, ip_);
 	}

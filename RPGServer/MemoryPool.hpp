@@ -32,12 +32,18 @@ public:
 			return ret;
 		}
 
-		ret = new T();
+		try {
+			ret = new T();
+		}
+		catch (std::bad_alloc e)
+		{
+			std::cerr << "메모리 할당 실패\n";
+		}
 
 		return ret;
 	}
 
-	void Deallocate(T* pT_)
+	void Deallocate(const T* const pT_)
 	{
 		q.push(pT_);
 		return;
