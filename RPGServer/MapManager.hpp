@@ -30,6 +30,9 @@ public:
 		return CreateMap(mapcode_);
 	}
 
+	std::function<void()> SendPacketFunc;
+	std::function<PacketData* ()> AllocatePacket;
+
 private:
 	RPG::Map* CreateMap(int mapcode_)
 	{
@@ -40,5 +43,4 @@ private:
 	}
 
 	std::map<int, RPG::Map*> m_mapList;
-	std::function<void()> SendPacketFunc;
 };

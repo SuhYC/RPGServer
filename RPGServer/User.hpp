@@ -14,10 +14,29 @@ public:
 		m_pCharInfo = nullptr;
 	}
 
+	void SetUserCode(int usercode_)
+	{
+		m_usercode = usercode_;
+		return;
+	}
+
+	void SetCharCode(int charcode_)
+	{
+		m_charcode = charcode_;
+		return;
+	}
+
+	void SetCharInfo()
+	{
+		
+	}
+
 	void Clear()
 	{
 
 	}
+
+	int GetUserCode() const { return m_usercode; }
 
 private:
 	int m_idx;

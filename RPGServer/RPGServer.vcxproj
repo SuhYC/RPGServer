@@ -142,8 +142,10 @@
     <ClInclude Include="Connection.hpp" />
     <ClInclude Include="Database.hpp" />
     <ClInclude Include="Define.hpp" />
+    <ClInclude Include="GameMap.hpp" />
     <ClInclude Include="IOCP.hpp" />
     <ClInclude Include="Json.hpp" />
+    <ClInclude Include="MapManager.hpp" />
     <ClInclude Include="MemoryPool.hpp" />
     <ClInclude Include="ODBCConnectionPool.hpp" />
     <ClInclude Include="PacketData.hpp" />
@@ -151,6 +153,8 @@
     <ClInclude Include="RedisConnectionPool.hpp" />
     <ClInclude Include="RedisManager.hpp" />
     <ClInclude Include="RPGServer.hpp" />
+    <ClInclude Include="User.hpp" />
+    <ClInclude Include="UserManager.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

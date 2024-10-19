@@ -19,6 +19,9 @@
     <Filter Include="헤더 파일\DB">
       <UniqueIdentifier>{a3cfeeb0-ae20-4493-9bdb-75501ed2597c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="헤더 파일\Feat">
+      <UniqueIdentifier>{ed769fcb-87dc-4de9-9bfe-0d5fdc6102a6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -67,6 +70,18 @@
     </ClInclude>
     <ClInclude Include="Json.hpp">
       <Filter>헤더 파일\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="GameMap.hpp">
+      <Filter>헤더 파일\Feat</Filter>
+    </ClInclude>
+    <ClInclude Include="MapManager.hpp">
+      <Filter>헤더 파일\Feat</Filter>
+    </ClInclude>
+    <ClInclude Include="User.hpp">
+      <Filter>헤더 파일\Feat</Filter>
+    </ClInclude>
+    <ClInclude Include="UserManager.hpp">
+      <Filter>헤더 파일\Feat</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

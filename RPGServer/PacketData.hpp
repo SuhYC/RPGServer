@@ -58,6 +58,11 @@ public:
 
 	void Clear()
 	{
+		if (m_pBlock == nullptr)
+		{
+			return;
+		}
+
 		if (m_pBlock->refCount.load() == 1)
 		{
 			delete m_pBlock;

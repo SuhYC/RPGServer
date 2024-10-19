@@ -28,6 +28,7 @@ namespace NetworkPacket
 
 		void Deallocate(PacketData* pPacket_)
 		{
+			pPacket_->Clear();
 			q.push(pPacket_);
 		}
 
