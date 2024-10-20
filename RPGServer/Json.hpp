@@ -109,3 +109,59 @@ private:
 
 	std::wstring_convert<std::codecvt_utf8<wchar_t>> m_cvt;
 };
+
+enum class MessageType
+{
+	SIGNIN,
+	SIGNUP,
+	MODIFY_PW,
+	GET_USER_LIST,
+	GET_CHAR_INFO,
+	SELECT_CHAR,
+	PERFORM_SKILL,
+	GET_OBJECT,
+	BUY_ITEM,
+	DROP_ITEM
+};
+
+struct Message
+{
+	MessageType type;
+	std::string msg; // parameter of the type to json
+};
+
+struct SignInParameter
+{
+	std::string id;
+	std::string pw;
+};
+
+struct SignUpParameter
+{
+	std::string id;
+	std::string pw;
+	unsigned char questno; // 비밀번호 변경 문제
+	std::string ans; // 비밀번호 변경 답
+	std::string hint; // 비밀번호 변경 문제 힌트(유저기입)
+};
+
+struct ModifyPWParameter
+{
+	std::string id;
+	std::string ans;
+};
+
+struct GetUserListParameter
+{
+	int usercode;
+};
+
+struct GetCharInfoParameter
+{
+	int charcode;
+};
+
+struct SelectCharParameter
+{
+	int charcode;
+};

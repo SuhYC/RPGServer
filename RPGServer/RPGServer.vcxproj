@@ -144,9 +144,11 @@
     <ClInclude Include="Define.hpp" />
     <ClInclude Include="GameMap.hpp" />
     <ClInclude Include="IOCP.hpp" />
+    <ClInclude Include="ItemObject.hpp" />
     <ClInclude Include="Json.hpp" />
     <ClInclude Include="MapManager.hpp" />
     <ClInclude Include="MemoryPool.hpp" />
+    <ClInclude Include="Monster.hpp" />
     <ClInclude Include="ODBCConnectionPool.hpp" />
     <ClInclude Include="PacketData.hpp" />
     <ClInclude Include="PacketPool.hpp" />
@@ -155,6 +157,7 @@
     <ClInclude Include="RPGServer.hpp" />
     <ClInclude Include="User.hpp" />
     <ClInclude Include="UserManager.hpp" />
+    <ClInclude Include="Vector.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

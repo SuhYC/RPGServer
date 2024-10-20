@@ -83,5 +83,14 @@
     <ClInclude Include="UserManager.hpp">
       <Filter>헤더 파일\Feat</Filter>
     </ClInclude>
+    <ClInclude Include="ItemObject.hpp">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Monster.hpp">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Vector.hpp">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
