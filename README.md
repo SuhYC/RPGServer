@@ -8,7 +8,7 @@ MSSQL with odbc <br/>
 rapidJson <br/>
 (to-do) openssl <br/>
 
-## 메모리풀 및 커넥션풀
+## 오브젝트풀 및 커넥션풀
 메모리의 할당 및 해제에는 오버헤드가 발생한다. <br/>
 객체풀을 이용하면 이러한 부분에서 성능향상을 얻을 수 있다. <br/>
 하지만 동기화문제를 해결해야한다. 본 프로젝트에서는 ```Concurrency::concurrent_queue<T>```를 사용해 동기화하도록 한다.<br/>
