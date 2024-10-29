@@ -9,9 +9,9 @@
 * 레디스에 저장할 키는 다음과 같은 규칙을 따른다.
 * 1. int형 숫자
 *  - 로그인된 계정의 유저번호를 의미한다. value는 ip정도를 넣을 생각
-* 2. int형 숫자 + 인스턴스이름(std::wstring)
+* 2. int형 숫자 + 인스턴스이름(std::string)
 *  - 특정캐릭터의 정보가 담긴 구조체를 Json화 하여 value로 저장.
-* 3. L"lock" + int형 숫자 + 인스턴스이름(std::wstring)
+* 3. "lock" + int형 숫자 + 인스턴스이름(std::string)
 *  - 2번 데이터를 변경하기 위한 레디스분산락. 사용 후 반드시 해제하여야한다.
 *  - 분산락을 걸고 해제하기 전에 서버가 다운되면 큰일이다.
 *  - 유효기간을 걸어야겠다. 10초 정도로 할까?
@@ -40,7 +40,7 @@ public:
 	}
 
 	// key : usercode, value : ip?
-	bool MakeSession(const int usercode_, const std::wstring& ip_)
+	bool MakeSession(const int usercode_, const std::string& ip_)
 	{
 		if (SetNx(usercode_, ip_))
 		{
@@ -58,7 +58,7 @@ public:
 			return false;
 		}
 
-		std::wstring key = std::to_wstring(charNo_) + L"CharInfo";
+		std::string key = std::to_string(charNo_) + "CharInfo";
 		std::string value;
 		m_jsonMaker.ToJsonString(pInfo_, value);
 
@@ -76,7 +76,7 @@ public:
 			return false;
 		}
 
-		std::wstring key = std::to_wstring(charNo_) + L"CharInfo";
+		std::string key = std::to_string(charNo_) + "CharInfo";
 		std::string value;
 
 		if (Get(key, value) == false)
@@ -103,9 +103,9 @@ public:
 
 private:
 	// for create data
-	// wstr(usercode+datatype) : key_
+	// str(usercode+datatype) : key_
 	// jsonstr : value_
-	bool SetNx(const std::wstring& key_, const std::string& value_)
+	bool SetNx(const std::string& key_, const std::string& value_)
 	{
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "SETNX %s %s", key_.c_str(), value_.c_str()));
@@ -164,7 +164,7 @@ private:
 	}
 
 	// for make session
-	bool SetNx(const int key_, const std::wstring& value_)
+	bool SetNx(const int key_, const std::string& value_)
 	{
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "SETNX %d %s", key_, value_.c_str()));
@@ -191,7 +191,7 @@ private:
 		return false;
 	}
 
-	bool Del(const std::wstring& key_)
+	bool Del(const std::string& key_)
 	{
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "DEL %s", key_.c_str()));
@@ -246,7 +246,7 @@ private:
 		return false;
 	}
 
-	bool Get(const std::wstring& key_, std::string& out_)
+	bool Get(const std::string& key_, std::string& out_)
 	{
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "GET %s", key_.c_str()));
@@ -289,9 +289,9 @@ private:
 	}
 
 	// 수정할 데이터의 키값을 그대로 넣으면 된다.
-	bool Lock(const std::wstring& lockname_)
+	bool Lock(const std::string& lockname_)
 	{
-		std::wstring key = L"lock" + lockname_;
+		std::string key = "lock" + lockname_;
 
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "SET %s %s NX PX %d", key.c_str(), "LOCK", REDIS_LOCK_TIME_MILLISECS));
@@ -312,9 +312,9 @@ private:
 	}
 
 	// 수정할 데이터의 키값을 그대로 넣으면 된다.
-	bool Unlock(const std::wstring& lockname_)
+	bool Unlock(const std::string& lockname_)
 	{
-		std::wstring key = L"lock" + lockname_;
+		std::string key = "lock" + lockname_;
 
 		if (Del(key))
 		{

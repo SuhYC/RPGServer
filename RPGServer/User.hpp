@@ -2,11 +2,12 @@
 
 #include "CharInfo.hpp"
 #include <functional>
+#include <iostream>
 
 class User
 {
 public:
-	User(int idx_) : m_idx(idx_)
+	User(const int idx_) : m_idx(idx_)
 	{
 		Clear();
 	}
@@ -16,13 +17,20 @@ public:
 		End();
 	}
 
-	void SetUserCode(int usercode_)
+	void SetIP(std::string ip_)
+	{
+		m_ip.assign(ip_);
+
+		return;
+	}
+
+	void SetUserCode(const int usercode_)
 	{
 		m_usercode = usercode_;
 		return;
 	}
 
-	void SetCharCode(int charcode_)
+	void SetCharCode(const int charcode_)
 	{
 		m_charcode = charcode_;
 		return;
@@ -39,7 +47,7 @@ public:
 		m_mapIdx = m_pCharInfo->LastMapCode;
 	}
 
-	void SetMapCode(int mapCode_)
+	void SetMapCode(const int mapCode_)
 	{
 		m_mapIdx = mapCode_;
 		return;
@@ -57,6 +65,7 @@ public:
 		m_mapIdx = -1;
 		m_usercode = 0;
 		m_charcode = 0;
+		m_ip.clear();
 
 		if (m_pCharInfo != nullptr)
 		{
@@ -76,6 +85,7 @@ public:
 
 	int GetUserCode() const { return m_usercode; }
 	bool IsConnected() const { return m_IsConnected; }
+	const std::string& GetIP() const { return m_ip; }
 
 	std::function<void(CharInfo*)> ReleaseInfo;
 
@@ -84,6 +94,7 @@ private:
 	int m_mapIdx;
 	int m_usercode;
 	int m_charcode;
+	std::string m_ip;
 	CharInfo* m_pCharInfo;
 
 	bool m_IsConnected;

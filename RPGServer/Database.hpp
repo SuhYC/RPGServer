@@ -52,7 +52,7 @@ public:
 	}
 
 	// eReturnCode : SIGNUP_FAIL, SIGNUP_SUCCESS, SIGNUP_ALREADY_IN_USE
-	eReturnCode SignUp(std::wstring& id_, std::wstring& pw_)
+	eReturnCode SignUp(std::string& id_, std::string& pw_)
 	{
 		if (!CheckPWIsValid(pw_) || !CheckIDIsValid(id_))
 		{
@@ -81,9 +81,11 @@ public:
 
 		SQLLEN idLength = id_.length();
 		SQLLEN pwLength = pw_.length();
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)id_.c_str(), 0, &idLength);
-		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)id_.c_str(), 0, &idLength);
-		SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)pw_.c_str(), 0, &pwLength);
+
+		// std::string으로부터 std::wstring으로 변환하는 방법을 사용해야겠다..
+		//SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
+		//SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
+		//SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)pw_.c_str(), 0, &pwLength);
 
 		SQLRETURN retCode = SQLExecute(hstmt);
 
@@ -139,7 +141,7 @@ public:
 	// usercode:int로 리턴.
 	// 0 : Client Not Certified.
 	// -1 : Already Have Session
-	int SignIn(const std::wstring& id_, const std::wstring& pw_, const std::wstring& ip_)
+	int SignIn(const std::string& id_, const std::string& pw_, const std::string& ip_)
 	{
 		if (!CheckIDIsValid(id_) || !CheckPWIsValid(pw_))
 		{
@@ -388,12 +390,12 @@ public:
 	}
 
 private:
-	bool CheckIDIsValid(const std::wstring& id_)
+	bool CheckIDIsValid(const std::string& id_)
 	{
 
 	}
 
-	bool CheckPWIsValid(const std::wstring& pw_)
+	bool CheckPWIsValid(const std::string& pw_)
 	{
 
 	}
@@ -401,7 +403,7 @@ private:
 	// 레디스의 SetNx를 이용, 해당 유저코드로 로그인한 유저가 없다면 등록한다.
 	// true : success to SignIn
 	// false : fail to SignIn (Already In Use)
-	bool TrySignIn(const int usercode_, const std::wstring& ip_)
+	bool TrySignIn(const int usercode_, const std::string& ip_)
 	{
 		return m_RedisManager.MakeSession(usercode_, ip_);
 	}

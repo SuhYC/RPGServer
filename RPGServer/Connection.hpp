@@ -175,6 +175,34 @@ public:
 		return;
 	}
 
+	bool GetIP(std::string& out_)
+	{
+		struct sockaddr_in clientAddr;
+		int addrLen = sizeof(clientAddr);
+
+		if (getpeername(m_ClientSocket, reinterpret_cast<struct sockaddr*>(&clientAddr), &addrLen) == SOCKET_ERROR)
+		{
+			std::cerr << "Connection::GetIP : getpeername Failed " << WSAGetLastError() << '\n';
+			return false;
+		}
+		char ipStr[INET_ADDRSTRLEN];
+
+		if (inet_ntop(AF_INET, &clientAddr.sin_addr, ipStr, sizeof(ipStr)) == nullptr)
+		{
+			std::cerr << "Connection::GetIP : inet_ntop Failed\n";
+			return false;
+		}
+
+		if (ipStr[INET_ADDRSTRLEN - 1] != '\0')
+		{
+			std::cerr << "Connection::GetIP : Not NULL terminated\n";
+			return false;
+		}
+
+		out_.assign(ipStr);
+		return true;
+	}
+
 	char* RecvBuffer() { return mRecvBuf; }
 	unsigned short GetIndex() { return m_ClientIndex; }
 

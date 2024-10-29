@@ -45,10 +45,10 @@
 */
 
 #include "IOCP.hpp"
-#include "Database.hpp"
 #include "UserManager.hpp"
 #include <Windows.h>
 #include "MapManager.hpp"
+#include "ReqHandler.hpp"
 
 class RPGServer : IOCPServer
 {
@@ -65,22 +65,19 @@ public:
 
 	void Start()
 	{
-		m_UserManager.Init(m_MaxClient);
-
+		m_ReqHandler.Init(m_MaxClient);
 		StartServer(m_MaxClient);
 	}
 
 	void End()
 	{
-		m_UserManager.Clear();
-
 		EndServer();
 	}
 
 private:
-	void OnConnect(const unsigned short index_) override
+	void OnConnect(const unsigned short index_, std::string& ip_) override
 	{
-
+		m_ReqHandler.SetIP(index_, ip_);
 		return;
 	}
 
@@ -88,24 +85,15 @@ private:
 	{
 		std::string str;
 		str.assign(pData_, ioSize_);
-		PacketData* pPacket = MakePacket(index_, str);
 
-		SendMsg(pPacket);
+		m_ReqHandler.HandleReq(index_, str);
 
 		return;
 	}
 
 	void OnDisconnect(const unsigned short index_) override
 	{
-		User* pUser = m_UserManager.GetUserByConnIndex(index_);
-		int usercode = pUser->GetUserCode();
-
-		if (usercode != CLIENT_NOT_CERTIFIED)
-		{
-			m_DB.LogOut(usercode);
-		}
-
-		m_UserManager.ReleaseUser(index_);
+		m_ReqHandler.HandleLogOut(index_);
 
 		return;
 	}
@@ -128,9 +116,10 @@ private:
 		return pPacket;
 	}
 
+
+
 	const int m_BindPort;
 	const unsigned short m_MaxClient;
-	Database m_DB;
-	UserManager m_UserManager;
 	MapManager m_MapManager;
+	ReqHandler m_ReqHandler;
 };

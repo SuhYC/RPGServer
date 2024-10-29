@@ -154,6 +154,7 @@
     <ClInclude Include="PacketPool.hpp" />
     <ClInclude Include="RedisConnectionPool.hpp" />
     <ClInclude Include="RedisManager.hpp" />
+    <ClInclude Include="ReqHandler.hpp" />
     <ClInclude Include="RPGServer.hpp" />
     <ClInclude Include="User.hpp" />
     <ClInclude Include="UserManager.hpp" />

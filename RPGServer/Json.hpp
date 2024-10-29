@@ -3,6 +3,7 @@
 #include "rapidjson/document.h"
 #include "rapidjson/writer.h"
 #include "rapidjson/stringbuffer.h"
+#include "rapidjson/error/en.h"
 #include <string>
 #include "CharInfo.hpp"
 #include <codecvt>
@@ -102,7 +103,196 @@ public:
 
 	std::string ToJsonString(CharList& charlist_)
 	{
+		rapidjson::Document doc;
+		doc.SetObject();
 
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("Type", "CharList", allocator);
+
+		rapidjson::Value charcodeList(rapidjson::kArrayType);
+
+		for (size_t i = 0; i < charlist_.size(); i++)
+		{
+			charcodeList.PushBack(charlist_[i], allocator);
+		}
+
+		doc.AddMember("CharList", charcodeList, allocator);
+
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+		doc.Accept(writer);
+
+		return buffer.GetString();
+	}
+
+	// out_ 매개변수로 들어온 객체는 초기화된다. 주의.
+	bool ToCharList(std::string& str_, CharList& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToCharList : " << rapidjson::GetParseError_En(doc.GetParseError()) << '\n';
+			return false;
+		}
+
+		if (!doc.HasMember("Type") || !doc["Type"].IsString() || strcmp(doc["Type"].GetString(), "CharList") != 0)
+		{
+			std::cerr << "Json::ToCharList : Not CharList JsonStr.\n";
+			return false;
+		}
+
+		if (!doc.HasMember("CharList") || !doc["CharList"].IsArray())
+		{
+			std::cerr << "Json::ToCharList : InCorrect Format.\n";
+			return false;
+		}
+
+		rapidjson::Value& array = doc["CharList"];
+		out_.Init(array.Size()); // 초기화
+
+		for (size_t i = 0; i < out_.size(); i++)
+		{
+			if (!array[i].IsInt())
+			{
+				std::cerr << "Json::ToCharList : Not Int Variable.\n";
+				return false;
+			}
+			out_[i] = array[i].GetInt();
+		}
+
+		return true;
+	}
+
+	bool ToReqMessage(std::string& str_, ReqMessage& out_)
+	{
+		rapidjson::Document doc;
+		if (!doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToReqMessage : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("Type") || !doc["Type"].IsInt() ||
+			!doc.HasMember("msg") || !doc["msg"].IsString())
+		{
+			std::cerr << "Json::ToReqMessage : Incorrect Format.\n";
+			return false;
+		}
+
+		int type = doc["Type"].GetInt();
+
+		if (type > static_cast<int>(MessageType::DROP_ITEM) || type < static_cast<int>(MessageType::SIGNIN))
+		{
+			std::cerr << "Json::ToReqMessage : Not Defined MessageType.\n";
+			return false;
+		}
+
+		out_.type = static_cast<MessageType>(type);
+		out_.msg = std::string(doc["msg"].GetString());
+
+		return true;
+	}
+
+	bool ToSignInParameter(std::string& str_, SignInParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToSignInParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("ID") || !doc["ID"].IsString() ||
+			!doc.HasMember("PW") || !doc["PW"].IsString())
+		{
+			std::cerr << "Json::ToSignInParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.id = doc["ID"].GetString();
+		out_.pw = doc["PW"].GetString();
+
+		return true;
+	}
+
+	bool ToSignUpParameter(std::string& str_, SignUpParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToSignUpParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("ID") || !doc["ID"].IsString() ||
+			!doc.HasMember("PW") || !doc["PW"].IsString() ||
+			!doc.HasMember("QuestNo") || !doc["QuestNo"].IsInt() ||
+			!doc.HasMember("Answer") || !doc["Answer"].IsString() ||
+			!doc.HasMember("Hint") || !doc["Hint"].IsString())
+		{
+			std::cerr << "Json::ToSignUpParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.id = doc["ID"].GetString();
+		out_.pw = doc["PW"].GetString();
+
+		int nData = doc["QuestNo"].GetInt();
+
+		if (nData > 255)
+		{
+			std::cerr << "Json::ToSignUpParam : To Large QuestNo.\n";
+			return false;
+		}
+
+		out_.questno = static_cast<unsigned char>(nData);
+		out_.ans = doc["Answer"].GetString();
+		out_.hint = doc["Hint"].GetString();
+
+		return true;
+	}
+
+	bool ToModifyPWParameter(std::string& str_, ModifyPWParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToModifyPWParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("ID") || !doc["ID"].IsString() ||
+			!doc.HasMember("Answer") || !doc["Answer"].IsString())
+		{
+			std::cerr << "Json::ToModifyPWParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.id = doc["ID"].GetString();
+		out_.ans = doc["Answer"].GetString();
+
+		return true;
+	}
+
+	bool ToGetCharListParameter(std::string& str_, GetCharListParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToGetCharListParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("Usercode") || !doc["Usercode"].IsInt())
+		{
+			std::cerr << "Json::ToGetCharListParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.usercode = doc["Usercode"].GetInt();
+
+		return true;
 	}
 
 private:
@@ -115,7 +305,7 @@ enum class MessageType
 	SIGNIN,
 	SIGNUP,
 	MODIFY_PW,
-	GET_USER_LIST,
+	GET_CHAR_LIST,
 	GET_CHAR_INFO,
 	SELECT_CHAR,
 	PERFORM_SKILL,
@@ -124,7 +314,7 @@ enum class MessageType
 	DROP_ITEM
 };
 
-struct Message
+struct ReqMessage
 {
 	MessageType type;
 	std::string msg; // parameter of the type to json
@@ -151,17 +341,27 @@ struct ModifyPWParameter
 	std::string ans;
 };
 
-struct GetUserListParameter
+struct GetCharListParameter
 {
 	int usercode;
-};
-
-struct GetCharInfoParameter
-{
-	int charcode;
 };
 
 struct SelectCharParameter
 {
 	int charcode;
+};
+
+struct PerformSkillParameter
+{
+
+};
+
+struct BuyItemParameter
+{
+
+};
+
+struct GetItemParameter
+{
+
 };
