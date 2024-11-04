@@ -241,10 +241,9 @@ public:
 	// CharInfo Class 만들어야함 + 메모리풀도 -> 패킷데이터랑 템플릿으로 묶을까?
 	// Redis 먼저 조회하고 없으면 MSSQL 조회
 	// 해당 No에 맞는 캐릭터의 정보를 담아 온다.
-	CharInfo* GetCharInfo(const int charNo_)
+	std::string GetCharInfoJsonStr(const int charNo_)
 	{
-		CharInfo* ret = m_CharInfoPool->Allocate();
-
+		std::string ret;
 		// CacheServer 먼저 확인
 		if (m_RedisManager.GetCharInfo(charNo_, ret))
 		{
@@ -269,7 +268,6 @@ public:
 		{
 			std::wcerr << L"Database::GetCharInfo : Failed to Execute\n";
 			ReleaseHandle(hstmt);
-			m_CharInfoPool->Deallocate(ret);
 			return nullptr;
 		}
 
@@ -280,7 +278,85 @@ public:
 		{
 			std::wcerr << L"Database::GetCharInfo : Failed to Fetch\n";
 			ReleaseHandle(hstmt);
-			m_CharInfoPool->Deallocate(ret);
+			return nullptr;
+		}
+
+		CharInfo* pCharInfo = m_CharInfoPool->Allocate();
+
+		SQLLEN len;
+		SQLGetData(hstmt, 1, SQL_C_WCHAR, pCharInfo->CharName, sizeof(pCharInfo->CharName) / sizeof(pCharInfo->CharName[0]), &len);
+		SQLGetData(hstmt, 2, SQL_C_LONG, &(pCharInfo->Level), 0, &len);
+		SQLGetData(hstmt, 3, SQL_C_LONG, &(pCharInfo->Experience), 0, &len);
+		SQLGetData(hstmt, 4, SQL_C_LONG, &(pCharInfo->StatPoint), 0, &len);
+		SQLGetData(hstmt, 5, SQL_C_LONG, &(pCharInfo->HealthPoint), 0, &len);
+		SQLGetData(hstmt, 6, SQL_C_LONG, &(pCharInfo->ManaPoint), 0, &len);
+		SQLGetData(hstmt, 7, SQL_C_LONG, &(pCharInfo->Strength), 0, &len);
+		SQLGetData(hstmt, 8, SQL_C_LONG, &(pCharInfo->Dexterity), 0, &len);
+		SQLGetData(hstmt, 9, SQL_C_LONG, &(pCharInfo->Intelligence), 0, &len);
+		SQLGetData(hstmt, 10, SQL_C_LONG, &(pCharInfo->Mentality), 0, &len);
+		SQLGetData(hstmt, 11, SQL_C_LONG, &(pCharInfo->Gold), 0, &len);
+		SQLGetData(hstmt, 12, SQL_C_LONG, &(pCharInfo->LastMapCode), 0, &len);
+
+		ReleaseHandle(hstmt);
+
+		m_JsonMaker.ToJsonString(pCharInfo, ret);
+
+		ReleaseObject(pCharInfo);
+
+		// 레디스에 등록하기
+		if (m_RedisManager.CreateCharInfo(charNo_, ret) == false)
+		{
+			std::wcerr << L"Database::GetCharInfo : 레디스에 정보 등록 실패\n";
+		}
+
+		return ret;
+	}
+
+	// CharInfo Class 만들어야함 + 메모리풀도 -> 패킷데이터랑 템플릿으로 묶을까?
+	// Redis 먼저 조회하고 없으면 MSSQL 조회
+	// 해당 No에 맞는 캐릭터의 정보를 담아 온다.
+	// 반드시 return으로 받아간 CharInfo 객체를 ReleaseObject로 반환해야한다.
+	CharInfo* GetCharInfo(const int charNo_)
+	{
+		CharInfo* ret = m_CharInfoPool->Allocate();
+
+		std::string strCharInfo;
+
+		// CacheServer 먼저 확인
+		if (m_RedisManager.GetCharInfo(charNo_, strCharInfo))
+		{
+			m_JsonMaker.ToCharInfo(strCharInfo, *ret);
+			return ret;
+		}
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT CHARNAME, LV, EXPERIENCE, STATPOINT, HEALTHPOINT, MANAPOINT, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE FROM CHARINFO WHERE CHARNO = ?;",
+			SQL_NTS);
+
+		int paramValue = charNo_;
+		SQLLEN paramValueLength = 0;
+
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &paramValue, 0, &paramValueLength);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"Database::GetCharInfo : Failed to Execute\n";
+			ReleaseHandle(hstmt);
+			return nullptr;
+		}
+
+		retCode = SQLFetch(hstmt);
+
+		// SQLFetch Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"Database::GetCharInfo : Failed to Fetch\n";
+			ReleaseHandle(hstmt);
 			return nullptr;
 		}
 
@@ -300,8 +376,14 @@ public:
 
 		ReleaseHandle(hstmt);
 
+		if (!m_JsonMaker.ToJsonString(ret, strCharInfo))
+		{
+			std::cerr << "Database::GetCharInfo : Json직렬화 실패.\n";
+			return ret;
+		}
+
 		// 레디스에 등록하기
-		if (m_RedisManager.CreateCharInfo(charNo_, ret) == false)
+		if (m_RedisManager.CreateCharInfo(charNo_, strCharInfo) == false)
 		{
 			std::wcerr << L"Database::GetCharInfo : 레디스에 정보 등록 실패\n";
 		}
@@ -311,7 +393,8 @@ public:
 
 	// CharList Class 만들어야함 + 메모리풀도 -> 패킷데이터랑 템플릿으로 묶을까?
 	// CharNo 여러개를 담아 온다.
-	CharList* GetCharList(const int userCode_)
+	// CharList는 Redis에 담지 않는다. (유저 요청이 접속당 1번수준. 추후 적절한 유저가 캐릭터선택을 요청하는지는 확인하게 만들어야할까?)
+	std::string GetCharList(const int userCode_)
 	{
 		HANDLE hstmt = m_Pool->Allocate();
 		SQLPrepare(hstmt, (SQLWCHAR*)
@@ -358,12 +441,12 @@ public:
 			charCodes.push_back(charCode);
 		}
 
-		CharList* ret = m_CharListPool->Allocate();
-		ret->Init(charCodes.size());
+		CharList* pCharList = m_CharListPool->Allocate();
+		pCharList->Init(charCodes.size());
 		for (size_t i = 0; i < charCodes.size(); i++)
 		{
 			try {
-				(*ret)[i] = charCodes[i];
+				(*pCharList)[i] = charCodes[i];
 			}
 			catch (std::out_of_range e)
 			{
@@ -372,7 +455,10 @@ public:
 		}
 
 		ReleaseHandle(hstmt);
-		return ret;
+
+		ReleaseObject(pCharList);
+
+		return  m_JsonMaker.ToJsonString(*pCharList);
 	}
 
 	void ReleaseObject(CharInfo* const pObj_)
@@ -393,11 +479,15 @@ private:
 	bool CheckIDIsValid(const std::string& id_)
 	{
 
+
+		return true;
 	}
 
 	bool CheckPWIsValid(const std::string& pw_)
 	{
 
+
+		return true;
 	}
 
 	// 레디스의 SetNx를 이용, 해당 유저코드로 로그인한 유저가 없다면 등록한다.
@@ -513,6 +603,7 @@ private:
 	}
 
 	RedisManager m_RedisManager;
+	JsonMaker m_JsonMaker;
 	std::vector<std::wstring> m_ReservedWord;
 	std::unique_ptr<MSSQL::ConnectionPool> m_Pool;
 	std::unique_ptr<MemoryPool<CharList>> m_CharListPool;

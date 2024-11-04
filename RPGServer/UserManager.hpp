@@ -22,12 +22,6 @@ public:
 		}
 	}
 
-	void RegisterUser(const int connectionIdx_, CharInfo* pInfo_)
-	{
-		users[connectionIdx_]->SetCharInfo(pInfo_);
-		// Map에 넣어주기
-	}
-
 	void ReleaseUser(const int connectionIdx_)
 	{
 		users[connectionIdx_]->Clear();

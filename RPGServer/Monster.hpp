@@ -64,7 +64,7 @@ public:
 		m_CumulativeDamage.clear();
 	}
 
-	bool IsAlive() { return m_bIsAlive; }
+	bool IsAlive() const { return m_bIsAlive; }
 
 private:
 	std::map<int, unsigned int> m_CumulativeDamage;

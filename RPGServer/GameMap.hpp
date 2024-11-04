@@ -98,20 +98,24 @@ namespace RPG
 
 
 		//----- func pointer
-		std::function<bool(PacketData*)> SendPacketFunc;
+		std::function<bool(const unsigned short, const std::string&, PacketData* const)> MakePacketFunc;
 		std::function<PacketData* ()> AllocatePacket;
 		std::function<void(PacketData*)> DeallocatePacket;
+		std::function<bool(PacketData*)> SendMsgFunc;
+		
 		std::function<ItemObject* ()> AllocateItemObject;
 		
 	private:
+		// 메시지 주체에 대한 정보를 해당 함수에서 작성할지 고민 필요
 		void SendToAllUser(std::string& data_, const int connectionIdx_, bool bExceptme_)
 		{
-			PacketData* tmp = AllocatePacket();
-
-			char* data = new char[data_.length()];
-			CopyMemory(data, data_.c_str(), data_.length());
-
-			tmp->Init(0, data, data_.length());
+			PacketData* pTmpPacket = AllocatePacket();
+			if (!MakePacketFunc(0, data_, pTmpPacket))
+			{
+				DeallocatePacket(pTmpPacket);
+				std::cerr << "GameMap::SendToAllUser : Failed to Create Packet On Map No" << m_mapcode << "\n";
+				return;
+			}
 
 			for (auto& i : users)
 			{
@@ -121,17 +125,25 @@ namespace RPG
 				}
 
 				PacketData* pPacket = AllocatePacket();
-				pPacket->Init(tmp, i.first);
-				SendPacketFunc(tmp);
+
+				if (pPacket == nullptr)
+				{
+					DeallocatePacket(pTmpPacket);
+					std::cerr << "GameMap::SendToAllUser : Failed to Create Packet On Map No" << m_mapcode << "\n";
+					return;
+				}
+
+				pPacket->Init(pTmpPacket, i.first);
+				SendMsgFunc(pPacket);
 			}
 
-			DeallocatePacket(tmp);
+			DeallocatePacket(pTmpPacket);
 
 			return;
 		}
 
 		// concurrent_unordered_map 쓰고 싶었는데 erase가 unsafe하다..
-		std::map<int, User*> users; // connidx, usercode 
+		std::map<int, User*> users; // connidx, userData 
 		std::map<unsigned int, ItemObject*> m_itemObjects;
 
 		Monster* m_Monsters[10];

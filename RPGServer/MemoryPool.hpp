@@ -43,7 +43,7 @@ public:
 		return ret;
 	}
 
-	void Deallocate(const T* const pT_)
+	void Deallocate(T* pT_)
 	{
 		q.push(pT_);
 		return;

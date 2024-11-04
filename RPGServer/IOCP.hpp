@@ -88,6 +88,12 @@ public:
 		return ret;
 	}
 
+	void DeallocatePacket(PacketData* pPacket)
+	{
+		m_PacketPool->Deallocate(pPacket);
+		return;
+	}
+
 private:
 	bool CreateListenSocket(int nBindPort_)
 	{

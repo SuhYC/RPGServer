@@ -5,6 +5,7 @@
 class CharInfo
 {
 public:
+
 	int CharNo;
 	int Level;
 	int Experience;

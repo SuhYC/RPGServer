@@ -17,22 +17,16 @@ public:
 		End();
 	}
 
-	void SetIP(std::string ip_)
+	void SetIP(const std::string& ip_)
 	{
 		m_ip.assign(ip_);
-
+		m_IsConnected = true;
 		return;
 	}
 
 	void SetUserCode(const int usercode_)
 	{
 		m_usercode = usercode_;
-		return;
-	}
-
-	void SetCharCode(const int charcode_)
-	{
-		m_charcode = charcode_;
 		return;
 	}
 
@@ -45,6 +39,7 @@ public:
 		m_pCharInfo = pInfo_;
 
 		m_mapIdx = m_pCharInfo->LastMapCode;
+		m_charcode = m_pCharInfo->CharNo;
 	}
 
 	void SetMapCode(const int mapCode_)

@@ -6,6 +6,7 @@
 #include "rapidjson/error/en.h"
 #include <string>
 #include "CharInfo.hpp"
+#include "CharList.hpp"
 #include <codecvt>
 
 /*
@@ -17,6 +18,78 @@
 * 
 * !!json문자열은 레디스영역을 벗어나지 않도록 할 것!!
 */ 
+
+
+enum class MessageType
+{
+	SIGNIN,
+	SIGNUP,
+	MODIFY_PW,
+	GET_CHAR_LIST,
+	GET_CHAR_INFO,
+	SELECT_CHAR,
+	PERFORM_SKILL,
+	GET_OBJECT,
+	BUY_ITEM,
+	DROP_ITEM
+};
+
+struct ReqMessage
+{
+	MessageType type;
+	std::string msg; // parameter of the type to json
+};
+
+struct SignInParameter
+{
+	std::string id;
+	std::string pw;
+};
+
+struct SignUpParameter
+{
+	std::string id;
+	std::string pw;
+	unsigned char questno; // 비밀번호 변경 문제
+	std::string ans; // 비밀번호 변경 답
+	std::string hint; // 비밀번호 변경 문제 힌트(유저기입)
+};
+
+struct ModifyPWParameter
+{
+	std::string id;
+	std::string ans;
+};
+
+struct GetCharListParameter
+{
+	int usercode;
+};
+
+struct GetCharInfoParameter
+{
+	int charcode;
+};
+
+struct SelectCharParameter
+{
+	int charcode;
+};
+
+struct PerformSkillParameter
+{
+
+};
+
+struct BuyItemParameter
+{
+
+};
+
+struct GetItemParameter
+{
+
+};
 
 class JsonMaker
 {
@@ -79,7 +152,7 @@ public:
 			{
 				return false;
 			}
-			wcscpy(out_.CharName, wstr.c_str());
+			wcscpy_s(out_.CharName, wstr.c_str());
 
 			// int Members
 			out_.CharNo = doc["CharNo"].GetInt();
@@ -295,73 +368,47 @@ public:
 		return true;
 	}
 
+	bool ToGetCharInfoParameter(std::string& str_, GetCharInfoParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToGetCharInfoParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("Charcode") || !doc["Charcode"].IsInt())
+		{
+			std::cerr << "Json::ToGetCharInfoParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.charcode = doc["Charcode"].GetInt();
+
+		return true;
+	}
+
+	bool ToSelectCharParameter(std::string& str_, SelectCharParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToSelectCharParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("Charcode") || !doc["Charcode"].IsInt())
+		{
+			std::cerr << "Json::ToSelectCharParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.charcode = doc["Charcode"].GetInt();
+
+		return true;
+	}
+
 private:
 
 	std::wstring_convert<std::codecvt_utf8<wchar_t>> m_cvt;
-};
-
-enum class MessageType
-{
-	SIGNIN,
-	SIGNUP,
-	MODIFY_PW,
-	GET_CHAR_LIST,
-	GET_CHAR_INFO,
-	SELECT_CHAR,
-	PERFORM_SKILL,
-	GET_OBJECT,
-	BUY_ITEM,
-	DROP_ITEM
-};
-
-struct ReqMessage
-{
-	MessageType type;
-	std::string msg; // parameter of the type to json
-};
-
-struct SignInParameter
-{
-	std::string id;
-	std::string pw;
-};
-
-struct SignUpParameter
-{
-	std::string id;
-	std::string pw;
-	unsigned char questno; // 비밀번호 변경 문제
-	std::string ans; // 비밀번호 변경 답
-	std::string hint; // 비밀번호 변경 문제 힌트(유저기입)
-};
-
-struct ModifyPWParameter
-{
-	std::string id;
-	std::string ans;
-};
-
-struct GetCharListParameter
-{
-	int usercode;
-};
-
-struct SelectCharParameter
-{
-	int charcode;
-};
-
-struct PerformSkillParameter
-{
-
-};
-
-struct BuyItemParameter
-{
-
-};
-
-struct GetItemParameter
-{
-
 };

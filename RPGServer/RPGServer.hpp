@@ -49,6 +49,7 @@
 #include <Windows.h>
 #include "MapManager.hpp"
 #include "ReqHandler.hpp"
+#include <functional>
 
 class RPGServer : IOCPServer
 {
@@ -56,6 +57,7 @@ public:
 	RPGServer(const int nBindPort_, const unsigned short MaxClient_) : m_BindPort(nBindPort_), m_MaxClient(MaxClient_)
 	{
 		InitSocket(nBindPort_);
+
 	}
 
 	~RPGServer()
@@ -66,6 +68,15 @@ public:
 	void Start()
 	{
 		m_ReqHandler.Init(m_MaxClient);
+
+		auto AlloFunc = [this]() -> PacketData* { return AllocatePacket(); };
+		auto DealloFunc = [this](PacketData* pPacket) { DeallocatePacket(pPacket); };
+		auto SendMsgFunc = [this](PacketData* pPacket) -> bool {return SendMsg(pPacket); };
+
+		m_ReqHandler.m_MapManager.AllocatePacket = AlloFunc;
+		m_ReqHandler.m_MapManager.DeallocatePacket = DealloFunc;
+		m_ReqHandler.m_MapManager.SendMsgFunc = SendMsgFunc;
+
 		StartServer(m_MaxClient);
 	}
 
@@ -98,28 +109,7 @@ private:
 		return;
 	}
 
-	PacketData* MakePacket(const unsigned short index_, std::string& str_)
-	{
-		char* msg = new char[str_.size() + 1];
-		CopyMemory(msg, str_.c_str(), str_.size());
-		msg[str_.size()] = NULL;
-
-		PacketData* pPacket = AllocatePacket();
-
-		if (pPacket == nullptr)
-		{
-			return nullptr;
-		}
-
-		pPacket->Init(index_, msg, str_.size());
-
-		return pPacket;
-	}
-
-
-
 	const int m_BindPort;
 	const unsigned short m_MaxClient;
-	MapManager m_MapManager;
 	ReqHandler m_ReqHandler;
 };

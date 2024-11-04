@@ -42,54 +42,24 @@ public:
 	// key : usercode, value : ip?
 	bool MakeSession(const int usercode_, const std::string& ip_)
 	{
-		if (SetNx(usercode_, ip_))
-		{
-			return true;
-		}
-		return false;
+		return SetNx(usercode_, ip_);
 	}
 
 	// Create Info of Char on Redis(Cache)
 	// data must not be on redis
-	bool CreateCharInfo(const int charNo_, CharInfo* pInfo_)
+	bool CreateCharInfo(const int charNo_, const std::string& info_)
 	{
-		if (pInfo_ == nullptr)
-		{
-			return false;
-		}
-
 		std::string key = std::to_string(charNo_) + "CharInfo";
-		std::string value;
-		m_jsonMaker.ToJsonString(pInfo_, value);
 
-		if (SetNx(key, value))
-		{
-			return true;
-		}
-		return false;
+		return SetNx(key, info_);
 	}
 
-	bool GetCharInfo(const int charNo_, CharInfo* out_)
+	bool GetCharInfo(const int charNo_, std::string& out_)
 	{
-		if (out_ == nullptr)
-		{
-			return false;
-		}
-
 		std::string key = std::to_string(charNo_) + "CharInfo";
 		std::string value;
 
-		if (Get(key, value) == false)
-		{
-			return false;
-		}
-
-		if (m_jsonMaker.ToCharInfo(value, *out_))
-		{
-			return true;
-		}
-
-		return false;
+		return Get(key, out_);
 	}
 
 	void LogOut(const int userCode_)
