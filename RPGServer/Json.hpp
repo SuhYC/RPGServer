@@ -37,6 +37,7 @@ enum class MessageType
 struct ReqMessage
 {
 	MessageType type;
+	unsigned int reqNo; // for response. res of reqNo.
 	std::string msg; // parameter of the type to json
 };
 
@@ -247,6 +248,7 @@ public:
 		}
 
 		if (!doc.HasMember("Type") || !doc["Type"].IsInt() ||
+			!doc.HasMember("ReqNo") || !doc["ReqNo"].IsInt() ||
 			!doc.HasMember("msg") || !doc["msg"].IsString())
 		{
 			std::cerr << "Json::ToReqMessage : Incorrect Format.\n";
@@ -262,6 +264,7 @@ public:
 		}
 
 		out_.type = static_cast<MessageType>(type);
+		out_.reqNo = doc["ReqNo"].GetInt();
 		out_.msg = std::string(doc["msg"].GetString());
 
 		return true;

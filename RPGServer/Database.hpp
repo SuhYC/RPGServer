@@ -30,7 +30,8 @@ enum class eReturnCode
 {
 	SIGNUP_SUCCESS,
 	SIGNUP_ALREADY_IN_USE,
-	SIGNUP_FAIL
+	SIGNUP_FAIL,
+	SYSTEM_ERROR // 시스템 문제
 };
 
 class Database
@@ -65,7 +66,7 @@ public:
 		if (hstmt == INVALID_HANDLE_VALUE)
 		{
 			std::cerr << "Database::SignUp : 구문핸들 발급실패\n";
-			return eReturnCode::SIGNUP_FAIL;
+			return eReturnCode::SYSTEM_ERROR;
 		}
 
 		SQLPrepare(hstmt, (SQLWCHAR*)
@@ -94,7 +95,7 @@ public:
 		{
 			ReleaseHandle(hstmt);
 			std::cerr << "Database::SIGNUP : Failed to Execute\n";
-			return eReturnCode::SIGNUP_FAIL;
+			return eReturnCode::SYSTEM_ERROR;
 		}
 
 		SQLWCHAR result_message[2]; // 'S' or 'F'
@@ -106,7 +107,7 @@ public:
 		{
 			ReleaseHandle(hstmt);
 			std::cerr << "Database::SIGNUP : Failed to Fetch\n";
-			return eReturnCode::SIGNUP_FAIL;
+			return eReturnCode::SYSTEM_ERROR;
 		}
 
 		SQLRETURN dataRet = SQLGetData(hstmt, 1, SQL_C_WCHAR, result_message, sizeof(result_message) / sizeof(result_message[0]), &resultlen);
@@ -116,7 +117,7 @@ public:
 		{
 			ReleaseHandle(hstmt);
 			std::wcerr << L"Database::SIGNUP : Failed to Get Data\n";
-			return eReturnCode::SIGNUP_FAIL;
+			return eReturnCode::SYSTEM_ERROR;
 		}
 
 		

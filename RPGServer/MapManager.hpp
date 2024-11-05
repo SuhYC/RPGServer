@@ -49,5 +49,5 @@ private:
 		return pMap;
 	}
 
-	std::map<int, RPG::Map*> m_mapList;
+	std::unordered_map<int, RPG::Map*> m_mapList;
 };

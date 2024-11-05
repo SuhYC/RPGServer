@@ -7,10 +7,28 @@
 * Json -> param -> Operation
 * 
 * 각 동작으로 연결하는 건 hashmap을 이용해 연결한다. 
-* (이진트리가 더 빠를수도 있긴 하다.. 해시함수 성능이 얼마인지 조사 필요)
+* 
+* !! RESULTCODE::SUCCESS_WITH_ALREADY_RESPONSE !!
+* 결과 통지에 별도의 정보를 추가로 전달해야하기 때문에 함수 내부에서 전달.
+* 후처리가 필요 없음.
 * 
 * 
 */
+
+enum class RESULTCODE
+{
+	SUCCESS,
+	SUCCESS_WITH_ALREADY_RESPONSE, // 함수 내부에서 메시지를 보냈기 때문에 따로 처리할 필요 없음.
+	WRONG_PARAM, // 요청번호와 맞지 않는 파라미터
+	FAIL, // 시스템의 문제
+	SIGNIN_FAIL, // ID와 PW가 맞지 않음
+	SIGNIN_ALREADY_HAVE_SESSION, // 이미 로그인된 계정
+	SIGNUP_FAIL, // ID규칙이나 PW규칙이 맞지 않음
+	SIGNUP_ALREADY_IN_USE, // 이미 사용중인 ID
+	WRONG_ORDER, // 요청 서순이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
+	UNDEFINED // 알수없는 오류
+};
+
 class ReqHandler
 {
 public:
@@ -47,7 +65,11 @@ public:
 	void HandleReq(const int userindex_, std::string& Req_)
 	{
 		ReqMessage msg;
-		m_JsonMaker.ToReqMessage(Req_, msg);
+		if (!m_JsonMaker.ToReqMessage(Req_, msg))
+		{
+
+			return;
+		}
 
 		auto itr = Actions.find(msg.type);
 
@@ -58,7 +80,20 @@ public:
 		}
 
 		// 함수포인터를 통한 사용
-		(this->*(itr->second))(userindex_, msg.msg);
+		RESULTCODE eRet = (this->*(itr->second))(userindex_, msg.msg);
+
+		// 클라이언트에서는 서버가 인정한 요청에 대해서 각자 반영한다. (다른 클라이언트가 요청한 건은 따로 반영한다.)
+		// 어느 요청을 서버가 처리했는지 확인한다.
+		// 인정되지 않은 요청은 반영하지 않아야하기 때문.
+		// 이 부분도 hashmap으로 바꿀까?
+		if (eRet == RESULTCODE::SUCCESS)
+		{
+			// msg.ReqNo에 맞게 성공통지
+		}
+		else
+		{
+			// msg.ReqNo에 맞게 실패통지
+		}
 
 		return;
 	}
@@ -89,12 +124,12 @@ public:
 	MapManager m_MapManager;
 
 private:
-	bool HandleSignIn(const int userindex_, std::string& param_)
+	RESULTCODE HandleSignIn(const int userindex_, std::string& param_)
 	{
 		SignInParameter stParam;
 		if (!m_JsonMaker.ToSignInParameter(param_, stParam))
 		{
-			return false;
+			return RESULTCODE::WRONG_PARAM;
 		}
 
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
@@ -104,28 +139,26 @@ private:
 		// 정보 틀림
 		if (nRet == CLIENT_NOT_CERTIFIED)
 		{
-			// 결과 전송
-			return false;
+			return RESULTCODE::SIGNIN_FAIL;
 		}
 
 		// 이미 로그인한 계정
 		if (nRet == ALREADY_HAVE_SESSION)
 		{
 			//결과 전송
-			return false;
+			return RESULTCODE::SIGNIN_ALREADY_HAVE_SESSION;
 		}
 
 		pUser->SetUserCode(nRet);
-		// 결과 전송
-		return true;
+		return RESULTCODE::SUCCESS;
 	}
 
-	bool HandleSignUp(const int userindex_, std::string& param_)
+	RESULTCODE HandleSignUp(const int userindex_, std::string& param_)
 	{
 		SignUpParameter stParam;
 		if (!m_JsonMaker.ToSignUpParameter(param_, stParam))
 		{
-			return false;
+			return RESULTCODE::WRONG_PARAM;
 		}
 
 		eReturnCode eRet = m_DB.SignUp(stParam.id, stParam.pw);
@@ -133,52 +166,55 @@ private:
 		switch (eRet)
 		{
 		case eReturnCode::SIGNUP_SUCCESS:
-			// 결과 전송
-			return true;
+			return RESULTCODE::SUCCESS;
+
 		case eReturnCode::SIGNUP_ALREADY_IN_USE:
-			// 결과 전송
-			return false;
+			return RESULTCODE::SIGNUP_ALREADY_IN_USE;
+
 		case eReturnCode::SIGNUP_FAIL:
-			// 결과 전송
-			return false;
+			return RESULTCODE::SIGNUP_FAIL;
+
+		case eReturnCode::SYSTEM_ERROR:
+			return RESULTCODE::FAIL;
+
 		default:
 			std::cerr << "ReqHandler::HandleSignUp : Undefined ReturnCode\n";
-			return false;
+			return RESULTCODE::UNDEFINED;
 		}
 	}
 
-	bool HandleModifyPW(const int userindex_, std::string& param_)
+	RESULTCODE HandleModifyPW(const int userindex_, std::string& param_)
 	{
 		// Database 쪽 함수 먼저 만들 것
 
-		return true;
+		return RESULTCODE::SUCCESS;
 	}
 
-	bool HandleGetCharList(const int userindex_, std::string& param_)
+	RESULTCODE HandleGetCharList(const int userindex_, std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
 		int usercode = pUser->GetUserCode();
 
 		GetCharListParameter stParam;
-		if (m_JsonMaker.ToGetCharListParameter(param_, stParam))
+		if (!m_JsonMaker.ToGetCharListParameter(param_, stParam))
 		{
-			return false;
+			return RESULTCODE::WRONG_PARAM;
 		}
 
 		if (usercode == CLIENT_NOT_CERTIFIED || usercode != stParam.usercode)
 		{
-			return false;
+			return RESULTCODE::WRONG_ORDER;
 		}
 
 		std::string strCharList = m_DB.GetCharList(usercode);
 
-		// 결과 전송
+		// 별도의 데이터 전송
 
-		return true;
+		return RESULTCODE::SUCCESS_WITH_ALREADY_RESPONSE;
 	}
 
-	bool HandleGetCharInfo(const int userindex_, std::string& param_)
+	RESULTCODE HandleGetCharInfo(const int userindex_, std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -187,12 +223,12 @@ private:
 		
 		std::string strCharInfo = m_DB.GetCharInfoJsonStr(stParam.charcode);
 
-		// 결과 전송
+		// 별도의 데이터 전송
 
-		return true;
+		return RESULTCODE::SUCCESS_WITH_ALREADY_RESPONSE;
 	}
 
-	bool HandleSelectChar(const int userindex_, std::string& param_)
+	RESULTCODE HandleSelectChar(const int userindex_, std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -207,37 +243,35 @@ private:
 
 		pMap->UserEnter(userindex_, pUser);
 
-		// 완료 통지
-
-		return true;
+		return RESULTCODE::SUCCESS;
 	}
 
-	bool HandlePerformSkill(const int userindex_, std::string& param_)
+	RESULTCODE HandlePerformSkill(const int userindex_, std::string& param_)
 	{
 
 
-		return true;
+		return RESULTCODE::SUCCESS;
 	}
 
-	bool HandleGetObject(const int userindex_, std::string& param_)
+	RESULTCODE HandleGetObject(const int userindex_, std::string& param_)
 	{
 
 
-		return true;
+		return RESULTCODE::SUCCESS;
 	}
 
-	bool HandleBuyItem(const int userindex_, std::string& param_)
+	RESULTCODE HandleBuyItem(const int userindex_, std::string& param_)
 	{
 
 
-		return true;
+		return RESULTCODE::SUCCESS;
 	}
 
-	bool HandleDropItem(const int userindex_, std::string& param_)
+	RESULTCODE HandleDropItem(const int userindex_, std::string& param_)
 	{
 
 
-		return true;
+		return RESULTCODE::SUCCESS;
 	}
 
 
@@ -272,7 +306,7 @@ private:
 	UserManager m_UserManager;
 	Database m_DB;
 
-	typedef bool(ReqHandler::* REQ_HANDLE_FUNC)(const int, std::string&);
+	typedef RESULTCODE(ReqHandler::* REQ_HANDLE_FUNC)(const int, std::string&);
 
 	std::unordered_map<MessageType, REQ_HANDLE_FUNC> Actions;
 };
