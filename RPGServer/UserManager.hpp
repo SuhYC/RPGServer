@@ -18,7 +18,7 @@ public:
 		for (int i = 0; i < maxCount_; i++)
 		{
 			users.push_back(new User(i));
-			users[0]->ReleaseInfo = this->ReleaseInfo;
+			users[i]->ReleaseInfo = this->ReleaseInfo;
 		}
 	}
 

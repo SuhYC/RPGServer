@@ -41,6 +41,12 @@ struct ReqMessage
 	std::string msg; // parameter of the type to json
 };
 
+struct ResMessage
+{
+	unsigned int reqNo; // which msg's result
+	std::string msg; // result (success, fail, othermsg(ex. jsonstr of charinfo))
+};
+
 struct SignInParameter
 {
 	std::string id;
@@ -79,6 +85,8 @@ struct SelectCharParameter
 
 struct PerformSkillParameter
 {
+	int monsterbitmask; // 1011 : 0번, 1번, 3번 몬스터에게 타격, 32bit니까 한 맵의 몬스터는 32마리까지 됨
+	int skillcode;
 
 };
 
@@ -95,12 +103,8 @@ struct GetItemParameter
 class JsonMaker
 {
 public:
-	bool ToJsonString(const CharInfo* pInfo_, std::string& out_)
+	bool ToJsonString(const CharInfo& pInfo_, std::string& out_)
 	{
-		if (pInfo_ == nullptr)
-		{
-			return false;
-		}
 
 		rapidjson::Document doc;
 		doc.SetObject();
@@ -111,21 +115,21 @@ public:
 		doc.AddMember("Type", "CharInfo", allocator);
 
 		// int Members
-		doc.AddMember("CharNo", pInfo_->CharNo, allocator);
-		doc.AddMember("Level", pInfo_->Level, allocator);
-		doc.AddMember("Experience", pInfo_->Experience, allocator);
-		doc.AddMember("StatPoint", pInfo_->StatPoint, allocator);
-		doc.AddMember("HealthPoint", pInfo_->HealthPoint, allocator);
-		doc.AddMember("ManaPoint", pInfo_->ManaPoint, allocator);
-		doc.AddMember("Strength", pInfo_->Strength, allocator);
-		doc.AddMember("Dexterity", pInfo_->Dexterity, allocator);
-		doc.AddMember("Intelligence", pInfo_->Intelligence, allocator);
-		doc.AddMember("Mentality", pInfo_->Mentality, allocator);
-		doc.AddMember("Gold", pInfo_->Gold, allocator);
-		doc.AddMember("LastMapCode", pInfo_->LastMapCode, allocator);
+		doc.AddMember("CharNo", pInfo_.CharNo, allocator);
+		doc.AddMember("Level", pInfo_.Level, allocator);
+		doc.AddMember("Experience", pInfo_.Experience, allocator);
+		doc.AddMember("StatPoint", pInfo_.StatPoint, allocator);
+		doc.AddMember("HealthPoint", pInfo_.HealthPoint, allocator);
+		doc.AddMember("ManaPoint", pInfo_.ManaPoint, allocator);
+		doc.AddMember("Strength", pInfo_.Strength, allocator);
+		doc.AddMember("Dexterity", pInfo_.Dexterity, allocator);
+		doc.AddMember("Intelligence", pInfo_.Intelligence, allocator);
+		doc.AddMember("Mentality", pInfo_.Mentality, allocator);
+		doc.AddMember("Gold", pInfo_.Gold, allocator);
+		doc.AddMember("LastMapCode", pInfo_.LastMapCode, allocator);
 
 		// wchar_t[] Member
-		std::string utf8str = m_cvt.to_bytes(pInfo_->CharName);
+		std::string utf8str = m_cvt.to_bytes(pInfo_.CharName);
 		doc.AddMember("CharName", rapidjson::Value().SetString(utf8str.c_str(), static_cast<rapidjson::SizeType>(utf8str.length())), allocator);
 
 		// Make JsonString
@@ -138,7 +142,7 @@ public:
 		return true;
 	}
 
-	bool ToCharInfo(std::string& jsonStr_, CharInfo& out_)
+	bool ToCharInfo(const std::string& jsonStr_, CharInfo& out_)
 	{
 		rapidjson::Document doc;
 		doc.Parse(jsonStr_.c_str());
@@ -201,7 +205,7 @@ public:
 	}
 
 	// out_ 매개변수로 들어온 객체는 초기화된다. 주의.
-	bool ToCharList(std::string& str_, CharList& out_)
+	bool ToCharList(const std::string& str_, CharList& out_)
 	{
 		rapidjson::Document doc;
 		if (doc.Parse(str_.c_str()).HasParseError())
@@ -238,7 +242,22 @@ public:
 		return true;
 	}
 
-	bool ToReqMessage(std::string& str_, ReqMessage& out_)
+	bool ToJsonString(const Inventory& inven_, std::string& out_)
+	{
+		// 작성 필요
+
+		return true;
+	}
+
+	// out_ 매개변수로 들어온 객체는 초기화된다. 주의.
+	bool ToInventory(const std::string& str_, Inventory& out_)
+	{
+		// 작성 필요
+
+		return true;
+	}
+
+	bool ToReqMessage(const std::string& str_, ReqMessage& out_)
 	{
 		rapidjson::Document doc;
 		if (!doc.Parse(str_.c_str()).HasParseError())
@@ -270,7 +289,7 @@ public:
 		return true;
 	}
 
-	bool ToSignInParameter(std::string& str_, SignInParameter& out_)
+	bool ToSignInParameter(const std::string& str_, SignInParameter& out_)
 	{
 		rapidjson::Document doc;
 		if (doc.Parse(str_.c_str()).HasParseError())
@@ -292,7 +311,7 @@ public:
 		return true;
 	}
 
-	bool ToSignUpParameter(std::string& str_, SignUpParameter& out_)
+	bool ToSignUpParameter(const std::string& str_, SignUpParameter& out_)
 	{
 		rapidjson::Document doc;
 		if (doc.Parse(str_.c_str()).HasParseError())
@@ -329,7 +348,7 @@ public:
 		return true;
 	}
 
-	bool ToModifyPWParameter(std::string& str_, ModifyPWParameter& out_)
+	bool ToModifyPWParameter(const std::string& str_, ModifyPWParameter& out_)
 	{
 		rapidjson::Document doc;
 		if (doc.Parse(str_.c_str()).HasParseError())
@@ -351,7 +370,7 @@ public:
 		return true;
 	}
 
-	bool ToGetCharListParameter(std::string& str_, GetCharListParameter& out_)
+	bool ToGetCharListParameter(const std::string& str_, GetCharListParameter& out_)
 	{
 		rapidjson::Document doc;
 		if (doc.Parse(str_.c_str()).HasParseError())
@@ -371,7 +390,7 @@ public:
 		return true;
 	}
 
-	bool ToGetCharInfoParameter(std::string& str_, GetCharInfoParameter& out_)
+	bool ToGetCharInfoParameter(const std::string& str_, GetCharInfoParameter& out_)
 	{
 		rapidjson::Document doc;
 		if (doc.Parse(str_.c_str()).HasParseError())
@@ -391,7 +410,7 @@ public:
 		return true;
 	}
 
-	bool ToSelectCharParameter(std::string& str_, SelectCharParameter& out_)
+	bool ToSelectCharParameter(const std::string& str_, SelectCharParameter& out_)
 	{
 		rapidjson::Document doc;
 		if (doc.Parse(str_.c_str()).HasParseError())

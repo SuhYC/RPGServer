@@ -98,7 +98,6 @@ namespace RPG
 
 
 		//----- func pointer
-		std::function<bool(const unsigned short, const std::string&, PacketData* const)> MakePacketFunc;
 		std::function<PacketData* ()> AllocatePacket;
 		std::function<void(PacketData*)> DeallocatePacket;
 		std::function<bool(PacketData*)> SendMsgFunc;
@@ -110,12 +109,12 @@ namespace RPG
 		void SendToAllUser(std::string& data_, const int connectionIdx_, bool bExceptme_)
 		{
 			PacketData* pTmpPacket = AllocatePacket();
-			if (!MakePacketFunc(0, data_, pTmpPacket))
+			if (pTmpPacket == nullptr)
 			{
-				DeallocatePacket(pTmpPacket);
-				std::cerr << "GameMap::SendToAllUser : Failed to Create Packet On Map No" << m_mapcode << "\n";
+				std::cerr << "GameMap::SendToAllUser : Failed to Create Packet On Map No" << m_mapcode << '\n';
 				return;
 			}
+			pTmpPacket->Init(0, data_);
 
 			for (auto& i : users)
 			{

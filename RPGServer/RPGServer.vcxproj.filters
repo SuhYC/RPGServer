@@ -95,5 +95,8 @@
     <ClInclude Include="ReqHandler.hpp">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Inventory.hpp">
+      <Filter>헤더 파일\Feat</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

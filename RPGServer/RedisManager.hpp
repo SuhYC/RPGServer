@@ -4,6 +4,7 @@
 #include "CharInfo.hpp"
 #include "RedisConnectionPool.hpp"
 #include "Json.hpp"
+#include "Inventory.hpp"
 
 /*
 * 레디스에 저장할 키는 다음과 같은 규칙을 따른다.
@@ -15,16 +16,17 @@
 *  - 2번 데이터를 변경하기 위한 레디스분산락. 사용 후 반드시 해제하여야한다.
 *  - 분산락을 걸고 해제하기 전에 서버가 다운되면 큰일이다.
 *  - 유효기간을 걸어야겠다. 10초 정도로 할까?
-* 
+*
 * 레디스 분산락
 * 1. 읽기에는 쓰지 않는다.
 * 2. 초기 업로드에는 쓰지 않는다. (Nx로 저장하면 된다.)
 * 3. 초기 업로드 이후 어떠한 동작에 대한 수정에만 쓴다.
 *  ex) BuyItem(const int charno, const int price) -> must use lock
-* 
+*
 * 데이터에 유효기간을 지정하는건 분산락밖에 없다.
 * 만약 데이터 저장량이 너무 많아 레디스서버가 문제가 된다면 유효기간 설정을 통해 오랫동안 사용되지 않은 데이터를 자동으로 지우면 된다. (EX : secs, PX : msecs)
 */
+
 
 class RedisManager
 {
@@ -57,8 +59,6 @@ public:
 	bool GetCharInfo(const int charNo_, std::string& out_)
 	{
 		std::string key = std::to_string(charNo_) + "CharInfo";
-		std::string value;
-
 		return Get(key, out_);
 	}
 
@@ -69,7 +69,105 @@ public:
 		return;
 	}
 
-	
+	bool GetInven(const int charNo_, std::string& out_)
+	{
+		std::string key = std::to_string(charNo_) + "Inven";
+		return Get(key, out_);
+	}
+
+	bool BuyItem(const int charNo_, const int itemcode_, const time_t extime_, const int count_, const int price_)
+	{
+		// 구매 갯수 제한
+		if (count_ > 100)
+		{
+			return false;
+		}
+
+		std::string infokey = std::to_string(charNo_) + "CharInfo";
+		std::string invenkey = std::to_string(charNo_) + "Inven";
+
+		// 락 설정 실패
+		if (!Lock(infokey))
+		{
+			return false;
+		}
+		if (!Lock(invenkey))
+		{
+			Unlock(infokey);
+			return false;
+		}
+
+		std::string strInfo;
+		if (!GetCharInfo(charNo_, strInfo))
+		{
+			std::cerr << "RedisManager::BuyItem : CharInfo검색 실패\n";
+			Unlock(infokey);
+			Unlock(invenkey);
+			return false;
+		}
+		std::string strInven;
+		if (!GetInven(charNo_, strInven))
+		{
+			std::cerr << "RedisManager::BuyItem : Inven검색 실패\n";
+			Unlock(infokey);
+			Unlock(invenkey);
+			return false;
+		}
+
+		CharInfo info;
+		m_jsonMaker.ToCharInfo(strInfo, info);
+
+		if (info.Gold < price_ * count_)
+		{
+			Unlock(infokey);
+			Unlock(invenkey);
+			return false;
+		}
+
+		Inventory inven;
+		//m_jsonMaker.ToInventory(strinven, inven);
+
+		// 인벤토리에 추가
+		if (!inven.push_back(itemcode_, extime_, count_))
+		{
+			Unlock(infokey);
+			Unlock(invenkey);
+			return false;
+		}
+
+		info.Gold -= price_ * count_;
+
+		std::string newStrInfo;
+
+		if (!m_jsonMaker.ToJsonString(info, newStrInfo)) //||
+			//!m_jsonMaker.ToJsonString(&inven, strinven))
+		{
+			std::cerr << "RedisManager::BuyItem : Json문자열 생성 실패\n";
+			Unlock(infokey);
+			Unlock(invenkey);
+			return false;
+		}
+
+		if (!SetXx(infokey, newStrInfo))
+		{
+			Unlock(infokey);
+			Unlock(invenkey);
+			return false;
+		}
+		// 이 경우는 수정했던 것을 되돌려야한다.
+		if (!SetXx(invenkey, strInven))
+		{
+			SetXx(infokey, strInfo); // 되돌리기
+			Unlock(infokey);
+			Unlock(invenkey);
+			return false;
+		}
+
+
+		Unlock(infokey);
+		Unlock(invenkey);
+		return true;
+	}
 
 private:
 	// for create data
@@ -102,7 +200,7 @@ private:
 		return false;
 	}
 
-	bool SetXx(const std::wstring& key_, const std::string& value_)
+	bool SetXx(const std::string& key_, const std::string& value_)
 	{
 		redisContext* rc = AllocateConnection();
 		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "SET %s %s XX", key_.c_str(), value_.c_str()));

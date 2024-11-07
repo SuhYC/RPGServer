@@ -2,6 +2,7 @@
 
 #include "Vector.hpp"
 
+// 필드에 뿌려진 아이템에 대한 정보이다.
 class ItemObject
 {
 public:

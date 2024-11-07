@@ -79,7 +79,44 @@ public:
 	void Init(const unsigned short sessionIndex_, char* pData_, const size_t dataSize_)
 	{
 		m_SessionIndex = sessionIndex_;
-		m_pBlock = new Block(pData_, dataSize_);
+		char* msg = nullptr;
+
+		try
+		{
+			msg = new char[dataSize_ + 1];
+		}
+		catch (const std::bad_alloc& e)
+		{
+			std::cerr << "PacketData::Init : 메모리 부족\n";
+			return;
+		}
+
+		CopyMemory(msg, pData_, dataSize_);
+		msg[dataSize_] = NULL;
+
+		m_pBlock = new Block(msg, dataSize_);
+	}
+
+	// 초기화
+	void Init(const unsigned short sessionIndex_, std::string& strData_)
+	{
+		m_SessionIndex = sessionIndex_;
+		char* msg = nullptr;
+
+		try
+		{
+			msg = new char[strData_.size() + 1];
+		}
+		catch (const std::bad_alloc& e)
+		{
+			std::cerr << "ReqHandler::MakePacket : 메모리 부족\n";
+			return;
+		}
+
+		CopyMemory(msg, strData_.c_str(), strData_.size());
+		msg[strData_.size()] = NULL;
+
+		m_pBlock = new Block(msg, strData_.size());
 	}
 
 	// 복사

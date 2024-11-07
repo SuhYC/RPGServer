@@ -30,7 +30,6 @@ public:
 		return CreateMap(mapcode_);
 	}
 
-	std::function<bool(const unsigned short, const std::string&, PacketData* const)> MakePacketFunc;
 	std::function<PacketData*()> AllocatePacket;
 	std::function<void(PacketData*)> DeallocatePacket;
 	std::function<bool(PacketData*)> SendMsgFunc;
@@ -39,7 +38,6 @@ private:
 	RPG::Map* CreateMap(int mapcode_)
 	{
 		RPG::Map* pMap = new RPG::Map(mapcode_);
-		pMap->MakePacketFunc = MakePacketFunc;
 		pMap->AllocatePacket = AllocatePacket;
 		pMap->DeallocatePacket = DeallocatePacket;
 		pMap->SendMsgFunc = SendMsgFunc;

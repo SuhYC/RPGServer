@@ -8,7 +8,7 @@
 * 
 * 각 동작으로 연결하는 건 hashmap을 이용해 연결한다. 
 * 
-* !! RESULTCODE::SUCCESS_WITH_ALREADY_RESPONSE !!
+* !! RESULTCODE::SUCCESS_WITH_ALREADY_RESPONSE !! -> 그냥 함수 내에서 일괄 처리하는걸로 바꿀까?
 * 결과 통지에 별도의 정보를 추가로 전달해야하기 때문에 함수 내부에서 전달.
 * 후처리가 필요 없음.
 * 
@@ -46,15 +46,17 @@ public:
 		Actions[MessageType::GET_OBJECT] = &ReqHandler::HandleGetObject;
 		Actions[MessageType::BUY_ITEM] = &ReqHandler::HandleBuyItem;
 		Actions[MessageType::DROP_ITEM] = &ReqHandler::HandleDropItem;
-
-		auto PacketFunc = [this](const unsigned short index_, const std::string& str_, PacketData* const out_) -> bool {return MakePacket(index_, str_, out_); };
-
-		m_MapManager.MakePacketFunc = PacketFunc;
 	}
 
 	void Init(const unsigned short MaxClient_)
 	{
+		auto releaseInfoFunc = [this](CharInfo* pInfo_) {m_DB.ReleaseObject(pInfo_); };
+		m_UserManager.ReleaseInfo = releaseInfoFunc;
 		m_UserManager.Init(MaxClient_);
+
+		m_MapManager.AllocatePacket = this->AllocatePacket;
+		m_MapManager.DeallocatePacket = this->DeallocatePacket;
+		m_MapManager.SendMsgFunc = this->SendMsgFunc;
 	}
 
 	~ReqHandler()
@@ -80,20 +82,7 @@ public:
 		}
 
 		// 함수포인터를 통한 사용
-		RESULTCODE eRet = (this->*(itr->second))(userindex_, msg.msg);
-
-		// 클라이언트에서는 서버가 인정한 요청에 대해서 각자 반영한다. (다른 클라이언트가 요청한 건은 따로 반영한다.)
-		// 어느 요청을 서버가 처리했는지 확인한다.
-		// 인정되지 않은 요청은 반영하지 않아야하기 때문.
-		// 이 부분도 hashmap으로 바꿀까?
-		if (eRet == RESULTCODE::SUCCESS)
-		{
-			// msg.ReqNo에 맞게 성공통지
-		}
-		else
-		{
-			// msg.ReqNo에 맞게 실패통지
-		}
+		RESULTCODE eRet = (this->*(itr->second))(userindex_, msg.reqNo, msg.msg);
 
 		return;
 	}
@@ -121,10 +110,12 @@ public:
 		return;
 	}
 
-	MapManager m_MapManager;
+	std::function<PacketData* ()> AllocatePacket;
+	std::function<void(PacketData*)> DeallocatePacket;
+	std::function<bool(PacketData*)> SendMsgFunc;
 
 private:
-	RESULTCODE HandleSignIn(const int userindex_, std::string& param_)
+	RESULTCODE HandleSignIn(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		SignInParameter stParam;
 		if (!m_JsonMaker.ToSignInParameter(param_, stParam))
@@ -153,7 +144,7 @@ private:
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE HandleSignUp(const int userindex_, std::string& param_)
+	RESULTCODE HandleSignUp(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		SignUpParameter stParam;
 		if (!m_JsonMaker.ToSignUpParameter(param_, stParam))
@@ -183,14 +174,14 @@ private:
 		}
 	}
 
-	RESULTCODE HandleModifyPW(const int userindex_, std::string& param_)
+	RESULTCODE HandleModifyPW(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		// Database 쪽 함수 먼저 만들 것
 
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE HandleGetCharList(const int userindex_, std::string& param_)
+	RESULTCODE HandleGetCharList(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -214,7 +205,7 @@ private:
 		return RESULTCODE::SUCCESS_WITH_ALREADY_RESPONSE;
 	}
 
-	RESULTCODE HandleGetCharInfo(const int userindex_, std::string& param_)
+	RESULTCODE HandleGetCharInfo(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -228,7 +219,7 @@ private:
 		return RESULTCODE::SUCCESS_WITH_ALREADY_RESPONSE;
 	}
 
-	RESULTCODE HandleSelectChar(const int userindex_, std::string& param_)
+	RESULTCODE HandleSelectChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -246,67 +237,40 @@ private:
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE HandlePerformSkill(const int userindex_, std::string& param_)
+	RESULTCODE HandlePerformSkill(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 
 
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE HandleGetObject(const int userindex_, std::string& param_)
+	RESULTCODE HandleGetObject(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 
 
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE HandleBuyItem(const int userindex_, std::string& param_)
+	RESULTCODE HandleBuyItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 
 
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE HandleDropItem(const int userindex_, std::string& param_)
+	RESULTCODE HandleDropItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 
 
 		return RESULTCODE::SUCCESS;
 	}
 
-
-	bool MakePacket(const unsigned short index_, const std::string& str_, PacketData* const out_)
-	{
-		if (out_ == nullptr)
-		{
-			return false;
-		}
-
-		char* msg = nullptr;
-
-		try
-		{
-			msg = new char[str_.size() + 1];
-		}
-		catch (const std::bad_alloc& e)
-		{
-			std::cerr << "ReqHandler::MakePacket : 메모리 부족\n";
-			return false;
-		}
-
-		CopyMemory(msg, str_.c_str(), str_.size());
-		msg[str_.size()] = NULL;
-
-		out_->Init(index_, msg, str_.size());
-
-		return true;
-	}
-
+	MapManager m_MapManager;
 	JsonMaker m_JsonMaker;
 	UserManager m_UserManager;
 	Database m_DB;
 
-	typedef RESULTCODE(ReqHandler::* REQ_HANDLE_FUNC)(const int, std::string&);
+	typedef RESULTCODE(ReqHandler::* REQ_HANDLE_FUNC)(const int, const unsigned int, const std::string&);
 
 	std::unordered_map<MessageType, REQ_HANDLE_FUNC> Actions;
 };

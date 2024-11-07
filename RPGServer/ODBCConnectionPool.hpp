@@ -50,6 +50,7 @@ namespace MSSQL
 
 		void Deallocate(HANDLE hstmt_)
 		{
+			SQLCloseCursor(hstmt_);
 			q.push(hstmt_);
 		}
 

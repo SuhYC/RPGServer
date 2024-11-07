@@ -67,15 +67,15 @@ public:
 
 	void Start()
 	{
-		m_ReqHandler.Init(m_MaxClient);
-
 		auto AlloFunc = [this]() -> PacketData* { return AllocatePacket(); };
 		auto DealloFunc = [this](PacketData* pPacket) { DeallocatePacket(pPacket); };
 		auto SendMsgFunc = [this](PacketData* pPacket) -> bool {return SendMsg(pPacket); };
 
-		m_ReqHandler.m_MapManager.AllocatePacket = AlloFunc;
-		m_ReqHandler.m_MapManager.DeallocatePacket = DealloFunc;
-		m_ReqHandler.m_MapManager.SendMsgFunc = SendMsgFunc;
+		m_ReqHandler.AllocatePacket = AlloFunc;
+		m_ReqHandler.DeallocatePacket = DealloFunc;
+		m_ReqHandler.SendMsgFunc = SendMsgFunc;
+
+		m_ReqHandler.Init(m_MaxClient);
 
 		StartServer(m_MaxClient);
 	}

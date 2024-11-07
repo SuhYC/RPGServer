@@ -19,6 +19,7 @@
 #include "CharList.hpp"
 #include "CharInfo.hpp"
 #include "MemoryPool.hpp"
+#include <unordered_map>
 
 const bool DB_DEBUG = true;
 const int CLIENT_NOT_CERTIFIED = 0;
@@ -43,6 +44,7 @@ public:
 		m_CharInfoPool = std::make_unique<MemoryPool<CharInfo>>(CHARINFO_MEMORY_POOL_COUNT);
 		m_CharListPool = std::make_unique<MemoryPool<CharList>>(CHARLIST_MEMORY_POOL_COUNT);
 		MakeReservedWordList();
+		MakePriceTable();
 	}
 
 	virtual ~Database()
@@ -83,10 +85,10 @@ public:
 		SQLLEN idLength = id_.length();
 		SQLLEN pwLength = pw_.length();
 
-		// std::string으로부터 std::wstring으로 변환하는 방법을 사용해야겠다..
-		//SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
-		//SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
-		//SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)pw_.c_str(), 0, &pwLength);
+		//std::string으로부터 std::wstring으로 변환하는 방법을 사용해야겠다..
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
+		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
+		SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)pw_.c_str(), 0, &pwLength);
 
 		SQLRETURN retCode = SQLExecute(hstmt);
 
@@ -269,7 +271,7 @@ public:
 		{
 			std::wcerr << L"Database::GetCharInfo : Failed to Execute\n";
 			ReleaseHandle(hstmt);
-			return nullptr;
+			return std::string();
 		}
 
 		retCode = SQLFetch(hstmt);
@@ -279,10 +281,17 @@ public:
 		{
 			std::wcerr << L"Database::GetCharInfo : Failed to Fetch\n";
 			ReleaseHandle(hstmt);
-			return nullptr;
+			return std::string();
 		}
 
 		CharInfo* pCharInfo = m_CharInfoPool->Allocate();
+
+		if (pCharInfo == nullptr)
+		{
+			std::cerr << "Database::GetCharInfo : Failed to Allocate Info Instance\n";
+			ReleaseHandle(hstmt);
+			return std::string();
+		}
 
 		SQLLEN len;
 		SQLGetData(hstmt, 1, SQL_C_WCHAR, pCharInfo->CharName, sizeof(pCharInfo->CharName) / sizeof(pCharInfo->CharName[0]), &len);
@@ -300,14 +309,14 @@ public:
 
 		ReleaseHandle(hstmt);
 
-		m_JsonMaker.ToJsonString(pCharInfo, ret);
+		m_JsonMaker.ToJsonString(*pCharInfo, ret);
 
 		ReleaseObject(pCharInfo);
 
 		// 레디스에 등록하기
 		if (m_RedisManager.CreateCharInfo(charNo_, ret) == false)
 		{
-			std::wcerr << L"Database::GetCharInfo : 레디스에 정보 등록 실패\n";
+			std::wcerr << L"Database::GetCharInfoJsonStr : 레디스에 정보 등록 실패\n";
 		}
 
 		return ret;
@@ -321,6 +330,12 @@ public:
 	{
 		CharInfo* ret = m_CharInfoPool->Allocate();
 
+		if (ret == nullptr)
+		{
+			std::cerr << "DB::GetCharInfo : Failed to Allocate Info Instance\n";
+			return nullptr;
+		}
+
 		std::string strCharInfo;
 
 		// CacheServer 먼저 확인
@@ -333,8 +348,9 @@ public:
 		HANDLE hstmt = m_Pool->Allocate();
 
 		SQLPrepare(hstmt, (SQLWCHAR*)
-			L"SELECT CHARNAME, LV, EXPERIENCE, STATPOINT, HEALTHPOINT, MANAPOINT, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE FROM CHARINFO WHERE CHARNO = ?;",
-			SQL_NTS);
+			L"SELECT CHARNAME, LV, EXPERIENCE, STATPOINT, HEALTHPOINT, MANAPOINT, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE"
+			L"FROM CHARINFO"
+			L"WHERE CHARNO = ?;", SQL_NTS);
 
 		int paramValue = charNo_;
 		SQLLEN paramValueLength = 0;
@@ -377,7 +393,7 @@ public:
 
 		ReleaseHandle(hstmt);
 
-		if (!m_JsonMaker.ToJsonString(ret, strCharInfo))
+		if (!m_JsonMaker.ToJsonString(*ret, strCharInfo))
 		{
 			std::cerr << "Database::GetCharInfo : Json직렬화 실패.\n";
 			return ret;
@@ -474,6 +490,37 @@ public:
 		m_CharListPool->Deallocate(pObj_);
 
 		return;
+	}
+
+	// 구매가격과 유저의 소지금만 판단한다.
+	// 유저의 위치, 권한등은 조사하지 않는다.
+	bool BuyItem(const int charCode_, const int itemCode_, const time_t extime_, const int count_)
+	{
+		int price = GetPrice(itemCode_);
+
+		// 해당하는 아이템 정보 없음
+		if (price == -1)
+		{
+			return false;
+		}
+
+		return m_RedisManager.BuyItem(charCode_, itemCode_, extime_, count_, price);
+	}
+
+	// 일단 Redis에 저장하지 않고 서버가 직접 hashmap으로 가지고 있는다.
+	// 서버단에서 해결할 업무가 많아 서버별 부하를 분산하려면 추후 Redis에 옮겨도 될듯.
+	// 지금은 어차피 PC 한대에서 모두 해결해야 하기에 Redis서버를 분산해놓을 수도 없으니 그냥 서버가 가지고 있는다.
+	int GetPrice(const int itemcode_) noexcept
+	{
+		auto itr = m_PriceTable.find(itemcode_);
+
+		if (itr == m_PriceTable.end())
+		{
+			// 해당하는 아이템 정보 없음
+			return -1;
+		}
+
+		return itr->second;
 	}
 
 private:
@@ -603,8 +650,66 @@ private:
 		return;
 	}
 
+	void MakePriceTable()
+	{
+		// MSSQL에서 ITEMTABLE에 있는 정보 긁어오기.
+		// [ITEMCODE][PURCHASEPRICE]
+		// 일단은 아이템이 많지는 않을거 같은데 10MB를 넘어가면 10MB단위로 잘라서 가져오는 것이 좋다고 한다.
+		// 일단은 행별 데이터는 8byte로 설정되어 있다.
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::MakePriceTable : 핸들 발급 실패\n";
+			return;
+		}
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT ITEMCODE, PURCHASEPRICE "
+			L"FROM ITEMTABLE", SQL_NTS);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			std::cerr << "Database::MakePriceTable : Failed to Execute\n";
+			return;
+		}
+
+		int itemcode;
+		SQLLEN itemcodeLen;
+		int purchasePrice;
+		SQLLEN purchasePriceLen;
+
+		SQLBindCol(hstmt, 1, SQL_C_LONG, &itemcode, sizeof(itemcode), &itemcodeLen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &purchasePrice, sizeof(purchasePrice), &purchasePriceLen);
+
+		retCode = SQLFetch(hstmt);
+
+		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
+		{
+			auto pair = m_PriceTable.emplace(itemcode, purchasePrice);
+			if (pair.second == false)
+			{
+				auto itr = m_PriceTable.find(itemcode);
+
+				std::cerr << "DB::MakePriceTable : Failed to Emplace on map : (" << itemcode << ", " << itr->second << ", " << purchasePrice << ")\n";
+			}
+
+			retCode = SQLFetch(hstmt);
+		}
+
+		m_Pool->Deallocate(hstmt);
+
+		return;
+	}
+
 	RedisManager m_RedisManager;
 	JsonMaker m_JsonMaker;
+	std::unordered_map<int, int> m_PriceTable;
 	std::vector<std::wstring> m_ReservedWord;
 	std::unique_ptr<MSSQL::ConnectionPool> m_Pool;
 	std::unique_ptr<MemoryPool<CharList>> m_CharListPool;

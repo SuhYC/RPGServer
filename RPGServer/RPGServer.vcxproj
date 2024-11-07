@@ -143,6 +143,7 @@
     <ClInclude Include="Database.hpp" />
     <ClInclude Include="Define.hpp" />
     <ClInclude Include="GameMap.hpp" />
+    <ClInclude Include="Inventory.hpp" />
     <ClInclude Include="IOCP.hpp" />
     <ClInclude Include="ItemObject.hpp" />
     <ClInclude Include="Json.hpp" />
