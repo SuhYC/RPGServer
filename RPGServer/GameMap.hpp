@@ -9,8 +9,15 @@
 #include <vector>
 #include "Monster.hpp"
 
+// 맵에 너무 많은 아이템이 있으면 안되니 일정 시간이 지난 후에 사라지게 만들어야함
+// Priority Queue를 이용해 <time_t, func>으로 pair를 구성하여 time_t에 대해 오름차순으로 정렬하고
+// Priority Queue의 front를 조회하여 현재시간보다 이전에 실행되어야하는 명령들을 pop하여 실행하는 구조가 필요하다.
+
 namespace RPG
 {
+	const int MAX_MONSTER_COUNT_ON_MAP = 10;
+	const int ITEM_LIFE_SEC = 60;
+
 	class Map
 	{
 	public:
@@ -38,7 +45,7 @@ namespace RPG
 		// false : monster survived.
 		bool AttackMonster(const int connectionIdx_, const int Monsteridx_, const unsigned int damage_)
 		{
-			if (Monsteridx_ >= 10 || Monsteridx_ < 0)
+			if (Monsteridx_ >= MAX_MONSTER_COUNT_ON_MAP || Monsteridx_ < 0)
 			{
 				return false;
 			}
@@ -60,10 +67,13 @@ namespace RPG
 			int usercode = itr->second->GetUserCode();
 			int iRet = target->GetDamaged(usercode, damage_);
 
+			// 데미지 준거 전파
+
 			// Heaviest Dealed Dealer
 			if (iRet != 0)
 			{
 				// CreateObject ...
+				// 몬스터 사망 전파, 오브젝트 생성 전파
 				return true;
 			}
 			return false;
@@ -75,8 +85,10 @@ namespace RPG
 			ItemObject* obj = AllocateItemObject();
 
 			obj->Init(itemcode_, count_, owner_, position_);
+			unsigned int cnt = m_itemcnt++;
+			m_itemObjects.emplace(cnt, obj);
 
-			m_itemObjects.emplace(m_itemcnt++, obj);
+			ReserveJob(ITEM_LIFE_SEC, [this, cnt]() {DiscardObject(cnt); });
 
 			// SendToAllUser() - Created Object Message
 
@@ -96,14 +108,32 @@ namespace RPG
 			return nullptr;
 		}
 
+		// 생성된 아이템을 만료시간이 지난 후에 폐기하는 함수
+		// 유저가 습득한 경우엔 당연히 nullptr로 처리되어 넘어간다.
+		void DiscardObject(const unsigned int objectNo_)
+		{
+			ItemObject* obj = PopObject(objectNo_);
+
+			if (obj != nullptr)
+			{
+				DeallocateItemObject(obj);
+			}
+
+			return;
+		}
 
 		//----- func pointer
 		std::function<PacketData* ()> AllocatePacket;
 		std::function<void(PacketData*)> DeallocatePacket;
+
 		std::function<bool(PacketData*)> SendMsgFunc;
 		
 		std::function<ItemObject* ()> AllocateItemObject;
-		
+		std::function<void(ItemObject*)> DeallocateItemObject;
+
+		// 특정 시간이 경과된 후 특정 함수를 실행해달라고 예약. (a,b) : a초 후에 b함수를 실행
+		std::function<void(const time_t, const std::function<void()>&)> ReserveJob; 
+
 	private:
 		// 메시지 주체에 대한 정보를 해당 함수에서 작성할지 고민 필요
 		void SendToAllUser(std::string& data_, const int connectionIdx_, bool bExceptme_)
@@ -145,7 +175,7 @@ namespace RPG
 		std::map<int, User*> users; // connidx, userData 
 		std::map<unsigned int, ItemObject*> m_itemObjects;
 
-		Monster* m_Monsters[10];
+		Monster* m_Monsters[MAX_MONSTER_COUNT_ON_MAP];
 
 		// C++14에서 읽쓰락을 쓰긴 좀 그러니..
 		std::mutex m_userMutex;

@@ -85,9 +85,9 @@ struct SelectCharParameter
 
 struct PerformSkillParameter
 {
+	int mapcode;
 	int monsterbitmask; // 1011 : 0번, 1번, 3번 몬스터에게 타격, 32bit니까 한 맵의 몬스터는 32마리까지 됨
 	int skillcode;
-
 };
 
 struct BuyItemParameter
@@ -95,9 +95,10 @@ struct BuyItemParameter
 
 };
 
-struct GetItemParameter
+struct GetObjectParameter
 {
-
+	int mapcode;
+	unsigned int objectidx;
 };
 
 class JsonMaker

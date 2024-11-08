@@ -157,6 +157,7 @@
     <ClInclude Include="RedisManager.hpp" />
     <ClInclude Include="ReqHandler.hpp" />
     <ClInclude Include="RPGServer.hpp" />
+    <ClInclude Include="Time_Based_PriorityQueue.hpp" />
     <ClInclude Include="User.hpp" />
     <ClInclude Include="UserManager.hpp" />
     <ClInclude Include="Vector.hpp" />

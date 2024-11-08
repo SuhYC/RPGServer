@@ -78,9 +78,10 @@ public:
 		}
 	}
 
-	int GetUserCode() const { return m_usercode; }
-	bool IsConnected() const { return m_IsConnected; }
-	const std::string& GetIP() const { return m_ip; }
+	int GetUserCode() const noexcept { return m_usercode; }
+	int GetMapCode() const noexcept { return m_mapIdx; }
+	bool IsConnected() const noexcept { return m_IsConnected; }
+	const std::string& GetIP() const noexcept { return m_ip; }
 
 	std::function<void(CharInfo*)> ReleaseInfo;
 

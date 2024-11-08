@@ -98,5 +98,8 @@
     <ClInclude Include="Inventory.hpp">
       <Filter>헤더 파일\Feat</Filter>
     </ClInclude>
+    <ClInclude Include="Time_Based_PriorityQueue.hpp">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

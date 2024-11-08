@@ -26,6 +26,8 @@ enum class RESULTCODE
 	SIGNUP_FAIL, // ID규칙이나 PW규칙이 맞지 않음
 	SIGNUP_ALREADY_IN_USE, // 이미 사용중인 ID
 	WRONG_ORDER, // 요청 서순이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
+	MODIFIED_MAPCODE, // 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
+	GET_OBJECT_FAIL, // 이미 다른 유저가 습득한 아이템이거나 맵에 존재하지 않는 아이템임.
 	UNDEFINED // 알수없는 오류
 };
 
@@ -237,16 +239,57 @@ private:
 		return RESULTCODE::SUCCESS;
 	}
 
+	// 클라이언트에서 자기 데미지는 임의의 값으로 판단해도 된다.
+	// 임의판단이 맘에 안들면 시간변수를 이용해 난수를 이용한 시뮬레이션을 해도 될듯..
+	// 혹시 해당 판정이 진행되는 동안 맵 이동이 일어나면 어떡하지?
+	// 맵코드도 확인한다.
 	RESULTCODE HandlePerformSkill(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
+		PerformSkillParameter stParam;
+		//m_JsonMaker.ToPerformSkillParameter(param_, stParam);
 
+		// --캐릭터가 스킬을 사용했다는 사실을 전파
+		
+		// if 파라미터에 아무런 몬스터 정보가 없으면 (허공사용)
+		// { return RESULTCODE::SUCCESS }
+
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
+
+		// --시전한 스킬정보와 유저의 현재 스탯을 기반으로 데미지 계산
+
+
+		// 해당 요청을 처리하기 전에 맵이 이동되어 반려.
+		if (pUser->GetMapCode() != stParam.mapcode)
+		{
+			return RESULTCODE::MODIFIED_MAPCODE;
+		}
+
+		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
+
+		// --타격한 몬스터 정보에 맞게 맵에 전파 (맵에서 몬스터 데미지처리와 사망처리, 결과 전파 진행)
 
 		return RESULTCODE::SUCCESS;
 	}
 
 	RESULTCODE HandleGetObject(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
+		GetObjectParameter stParam;
+		//m_JsonMaker.ToGetObjectParameter(param_, stParam);
 
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
+
+		if (pUser->GetMapCode() != stParam.mapcode)
+		{
+			return RESULTCODE::MODIFIED_MAPCODE;
+		}
+
+		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
+		ItemObject* itemobj = pMap->PopObject(stParam.objectidx);
+
+		if (itemobj == nullptr)
+		{
+
+		}
 
 		return RESULTCODE::SUCCESS;
 	}
