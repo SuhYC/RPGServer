@@ -13,22 +13,25 @@
 * 후처리가 필요 없음.
 * 
 * 
+* Todo. DropItem -> 어떤 아이템이었는지에 대한 정보가 필요하다..
 */
+
+const float DISTANCE_LIMIT_GET_OBJECT = 5.0f;
 
 enum class RESULTCODE
 {
 	SUCCESS,
-	SUCCESS_WITH_ALREADY_RESPONSE, // 함수 내부에서 메시지를 보냈기 때문에 따로 처리할 필요 없음.
-	WRONG_PARAM, // 요청번호와 맞지 않는 파라미터
-	FAIL, // 시스템의 문제
-	SIGNIN_FAIL, // ID와 PW가 맞지 않음
-	SIGNIN_ALREADY_HAVE_SESSION, // 이미 로그인된 계정
-	SIGNUP_FAIL, // ID규칙이나 PW규칙이 맞지 않음
-	SIGNUP_ALREADY_IN_USE, // 이미 사용중인 ID
-	WRONG_ORDER, // 요청 서순이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
-	MODIFIED_MAPCODE, // 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
-	GET_OBJECT_FAIL, // 이미 다른 유저가 습득한 아이템이거나 맵에 존재하지 않는 아이템임.
-	UNDEFINED // 알수없는 오류
+	SUCCESS_WITH_ALREADY_RESPONSE,	// 함수 내부에서 메시지를 보냈기 때문에 따로 처리할 필요 없음.
+	WRONG_PARAM,					// 요청번호와 맞지 않는 파라미터
+	SYSTEM_FAIL,					// 시스템의 문제
+	SIGNIN_FAIL,					// ID와 PW가 맞지 않음
+	SIGNIN_ALREADY_HAVE_SESSION,	// 이미 로그인된 계정
+	SIGNUP_FAIL,					// ID규칙이나 PW규칙이 맞지 않음
+	SIGNUP_ALREADY_IN_USE,			// 이미 사용중인 ID
+	WRONG_ORDER,					// 요청 서순이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
+	MODIFIED_MAPCODE,				// 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
+	REQ_FAIL,						// 현재 조건에 맞지 않아 실행이 실패함 (이미 사라진 아이템 등..)
+	UNDEFINED						// 알수없는 오류
 };
 
 class ReqHandler
@@ -168,7 +171,7 @@ private:
 			return RESULTCODE::SIGNUP_FAIL;
 
 		case eReturnCode::SYSTEM_ERROR:
-			return RESULTCODE::FAIL;
+			return RESULTCODE::SYSTEM_FAIL;
 
 		default:
 			std::cerr << "ReqHandler::HandleSignUp : Undefined ReturnCode\n";
@@ -246,12 +249,15 @@ private:
 	RESULTCODE HandlePerformSkill(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		PerformSkillParameter stParam;
-		//m_JsonMaker.ToPerformSkillParameter(param_, stParam);
+		m_JsonMaker.ToPerformSkillParameter(param_, stParam);
 
 		// --캐릭터가 스킬을 사용했다는 사실을 전파
 		
-		// if 파라미터에 아무런 몬스터 정보가 없으면 (허공사용)
-		// { return RESULTCODE::SUCCESS }
+		// 적중한 몬스터 없음
+		if (stParam.monsterbitmask == 0)
+		{
+			return RESULTCODE::SUCCESS;
+		}
 
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -274,7 +280,7 @@ private:
 	RESULTCODE HandleGetObject(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		GetObjectParameter stParam;
-		//m_JsonMaker.ToGetObjectParameter(param_, stParam);
+		m_JsonMaker.ToGetObjectParameter(param_, stParam);
 
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -286,10 +292,27 @@ private:
 		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
 		ItemObject* itemobj = pMap->PopObject(stParam.objectidx);
 
+		// 이미 습득하였거나 유효기간이 지나 사라진 아이템
 		if (itemobj == nullptr)
 		{
+			// --실패 전달
 
+			return RESULTCODE::REQ_FAIL;
 		}
+
+		Vector2 position = itemobj->GetPosition();
+
+		if (position.SquaredDistance(pUser->GetPosition()) <= DISTANCE_LIMIT_GET_OBJECT)
+		{
+			// --실패 전달
+
+			return RESULTCODE::REQ_FAIL;
+		}
+
+		// --성공 전달
+
+		// 객체 반환
+		m_MapManager.ReleaseItemObject(itemobj);
 
 		return RESULTCODE::SUCCESS;
 	}
@@ -303,7 +326,32 @@ private:
 
 	RESULTCODE HandleDropItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
+		DropItemParameter stParam;
+		m_JsonMaker.ToDropItemParameter(param_, stParam);
 
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
+
+		if (stParam.mapcode != pUser->GetMapCode())
+		{
+			// --실패전달
+			return RESULTCODE::MODIFIED_MAPCODE;
+		}
+
+		int nRet = m_DB.DropItem(pUser->GetCharCode(), stParam.slotidx, stParam.count);
+
+		if (nRet == 0)
+		{
+			// --실패전달
+			return RESULTCODE::REQ_FAIL;
+		}
+
+		RPG::Map* pMap = m_MapManager.GetMap(stParam.mapcode);
+
+		Vector2 position = pUser->GetPosition();
+
+		pMap->CreateObject(nRet, stParam.count, 0, position);
+
+		// --성공 전달 (아이템 생성관련은 맵에서 관리. 해당 메시지는 해당유저의 인벤토리에 반영할 정보.)
 
 		return RESULTCODE::SUCCESS;
 	}

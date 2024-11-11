@@ -27,6 +27,13 @@
 * 만약 데이터 저장량이 너무 많아 레디스서버가 문제가 된다면 유효기간 설정을 통해 오랫동안 사용되지 않은 데이터를 자동으로 지우면 된다. (EX : secs, PX : msecs)
 */
 
+enum class REDISRETURN
+{
+	WRONG_PARAM,	// 잘못된 입력
+	LOCK_FAILED,	// 락 획득 실패 (재도전해야함)
+	FAIL,			// 기타 이유로 실패
+	SUCCESS			// 반영 성공
+};
 
 class RedisManager
 {
@@ -75,12 +82,12 @@ public:
 		return Get(key, out_);
 	}
 
-	bool BuyItem(const int charNo_, const int itemcode_, const time_t extime_, const int count_, const int price_)
+	REDISRETURN BuyItem(const int charNo_, const int itemcode_, const time_t extime_, const int count_, const int price_)
 	{
 		// 구매 갯수 제한
-		if (count_ > 100)
+		if (count_ > MAX_COUNT_ON_SLOT)
 		{
-			return false;
+			return REDISRETURN::WRONG_PARAM;
 		}
 
 		std::string infokey = std::to_string(charNo_) + "CharInfo";
@@ -89,12 +96,12 @@ public:
 		// 락 설정 실패
 		if (!Lock(infokey))
 		{
-			return false;
+			return REDISRETURN::LOCK_FAILED;
 		}
 		if (!Lock(invenkey))
 		{
 			Unlock(infokey);
-			return false;
+			return REDISRETURN::LOCK_FAILED;
 		}
 
 		std::string strInfo;
@@ -103,7 +110,7 @@ public:
 			std::cerr << "RedisManager::BuyItem : CharInfo검색 실패\n";
 			Unlock(infokey);
 			Unlock(invenkey);
-			return false;
+			return REDISRETURN::FAIL;
 		}
 		std::string strInven;
 		if (!GetInven(charNo_, strInven))
@@ -111,7 +118,7 @@ public:
 			std::cerr << "RedisManager::BuyItem : Inven검색 실패\n";
 			Unlock(infokey);
 			Unlock(invenkey);
-			return false;
+			return REDISRETURN::FAIL;
 		}
 
 		CharInfo info;
@@ -121,7 +128,7 @@ public:
 		{
 			Unlock(infokey);
 			Unlock(invenkey);
-			return false;
+			return REDISRETURN::FAIL;
 		}
 
 		Inventory inven;
@@ -132,7 +139,7 @@ public:
 		{
 			Unlock(infokey);
 			Unlock(invenkey);
-			return false;
+			return REDISRETURN::FAIL;
 		}
 
 		info.Gold -= price_ * count_;
@@ -145,14 +152,14 @@ public:
 			std::cerr << "RedisManager::BuyItem : Json문자열 생성 실패\n";
 			Unlock(infokey);
 			Unlock(invenkey);
-			return false;
+			return REDISRETURN::FAIL;
 		}
 
 		if (!SetXx(infokey, newStrInfo))
 		{
 			Unlock(infokey);
 			Unlock(invenkey);
-			return false;
+			return REDISRETURN::FAIL;
 		}
 		// 이 경우는 수정했던 것을 되돌려야한다.
 		if (!SetXx(invenkey, strInven))
@@ -160,13 +167,67 @@ public:
 			SetXx(infokey, strInfo); // 되돌리기
 			Unlock(infokey);
 			Unlock(invenkey);
-			return false;
+			return REDISRETURN::FAIL;
 		}
 
 
 		Unlock(infokey);
 		Unlock(invenkey);
-		return true;
+		return REDISRETURN::SUCCESS;
+	}
+
+	REDISRETURN DropItem(const int charNo_, const int slotIdx_, const int count_, Item& out_)
+	{
+		if (count_ > MAX_COUNT_ON_SLOT || count_ <= 0 || slotIdx_ >= MAX_SLOT || slotIdx_ < 0)
+		{
+			return REDISRETURN::WRONG_PARAM;
+		}
+
+		std::string key = std::to_string(charNo_) + "Inven";
+
+		if (!Lock(key))
+		{
+			return REDISRETURN::LOCK_FAILED;
+		}
+
+		std::string strInven;
+
+		if (!GetInven(charNo_, strInven))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		Inventory stInven;
+
+		if (!m_jsonMaker.ToInventory(strInven, stInven))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		out_.Init(stInven[slotIdx_]);
+
+		if (!stInven.Drop(slotIdx_, count_))
+		{
+			Unlock(key);
+			return REDISRETURN::WRONG_PARAM; // Drop은 실패하는 케이스가 잘못된 매개변수밖에 없다.
+		}
+
+		if (!m_jsonMaker.ToJsonString(stInven, strInven))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		if (!SetXx(key, strInven))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		Unlock(key);
+		return REDISRETURN::SUCCESS;
 	}
 
 private:

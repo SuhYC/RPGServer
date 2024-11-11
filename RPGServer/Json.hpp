@@ -7,6 +7,7 @@
 #include <string>
 #include "CharInfo.hpp"
 #include "CharList.hpp"
+#include "Inventory.hpp"
 #include <codecvt>
 
 /*
@@ -88,6 +89,7 @@ struct PerformSkillParameter
 	int mapcode;
 	int monsterbitmask; // 1011 : 0번, 1번, 3번 몬스터에게 타격, 32bit니까 한 맵의 몬스터는 32마리까지 됨
 	int skillcode;
+	long long timeValue; // 클라이언트에서 측정한 시간, 해당 시간을 기반으로 난수사용하여 데미지 계산
 };
 
 struct BuyItemParameter
@@ -98,7 +100,14 @@ struct BuyItemParameter
 struct GetObjectParameter
 {
 	int mapcode;
-	unsigned int objectidx;
+	int objectidx;
+};
+
+struct DropItemParameter
+{
+	int mapcode;
+	int slotidx;
+	int count;
 };
 
 class JsonMaker
@@ -427,6 +436,87 @@ public:
 		}
 
 		out_.charcode = doc["Charcode"].GetInt();
+
+		return true;
+	}
+
+	bool ToPerformSkillParameter(const std::string& str_, PerformSkillParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToPerformSkillParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("MapCode") || !doc["MapCode"].IsInt() ||
+			!doc.HasMember("Target") || !doc["Target"].IsInt() ||
+			!doc.HasMember("SkillCode") || !doc["SkillCode"].IsInt() ||
+			!doc.HasMember("Time") || !doc["Time"].IsInt64())
+		{
+			std::cerr << "Json::ToPerformSkillParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.mapcode = doc["MapCode"].GetInt();
+		out_.monsterbitmask = doc["Target"].GetInt();
+		out_.skillcode = doc["SkillCode"].GetInt();
+		out_.timeValue = doc["Time"].GetInt64();
+
+		return true;
+	}
+
+	bool ToBuyItemParameter(const std::string& str_, BuyItemParameter& out_)
+	{
+		// 작성 필요
+		// NPC가 접근가능한지 같은걸 확인해야할지
+		// 권한 같은 걸 확인해야할지 (이건 파라미터에서 해결할 문제는 아님)
+		// 고민 필요
+	}
+
+	bool ToGetObjectParameter(const std::string& str_, GetObjectParameter& out_)
+	{
+		rapidjson::Document doc;
+
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToGetObjectParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("MapCode") || !doc["MapCode"].IsInt() ||
+			!doc.HasMember("ItemIdx") || !doc["ItemIdx"].IsUint())
+		{
+			std::cerr << "Json::ToGetObjectParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.mapcode = doc["MapCode"].GetInt();
+		out_.objectidx = doc["ItemIdx"].GetUint();
+
+		return true;
+	}
+
+	bool ToDropItemParameter(const std::string& str_, DropItemParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (!doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToDropItemParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("MapCode") || !doc["MapCode"].IsInt() ||
+			!doc.HasMember("SlotIdx") || !doc["SlotIdx"].IsInt() ||
+			!doc.HasMember("Count") || !doc["Count"].IsInt())
+		{
+			std::cerr << "Json::ToDropItemParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.mapcode = doc["MapCode"].GetInt();
+		out_.slotidx = doc["SlotIdx"].GetInt();
+		out_.count = doc["Count"].GetInt();
 
 		return true;
 	}

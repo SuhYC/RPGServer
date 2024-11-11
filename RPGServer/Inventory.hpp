@@ -1,61 +1,13 @@
 #pragma once
 
-#include <ctime>
 #include <algorithm>
+#include "Item.hpp"
 
 const int MAX_SLOT = 30;
 const int MAX_COUNT_ON_SLOT = 100;
 
 class Inventory
 {
-private:
-	class Item
-	{
-	public:
-		Item() : itemcode(0), expirationtime(0), count(0)
-		{
-
-		}
-
-		Item(const int itemcode_, const time_t extime_, const int count_) : itemcode(itemcode_), expirationtime(extime_), count(count_)
-		{
-
-		}
-
-		void Init(const int itemcode_, const time_t extime_, const int count_)
-		{
-			itemcode = itemcode_;
-			expirationtime = extime_;
-			count = count_;
-			return;
-		}
-
-		void Init()
-		{
-			Init(0, 0, 0);
-			return;
-		}
-
-		// 값을 복사한다.
-		void Init(Item& other_)
-		{
-			Init(other_.itemcode, other_.expirationtime, other_.count);
-			return;
-		}
-
-		void Swap(Item& other_)
-		{
-			Item tmp(other_);
-			other_.Init(*this);
-			this->Init(tmp);
-			return;
-		}
-
-		int itemcode;
-		time_t expirationtime;
-		int count;
-	};
-
 public:
 	// true : 적용성공, false : 수량문제 혹은 공간부족
 	bool push_back(const int itemcode_, const time_t extime_, const int count_)
@@ -231,17 +183,39 @@ public:
 		return true;
 	}
 
-private:
-
-	bool cmp(Item& i1, Item& i2)
+	bool Drop(const int slotIdx_, const int count_ = 1)
 	{
-		if (i1.itemcode == i2.itemcode)
+		if (slotIdx_ >= MAX_SLOT || slotIdx_ < 0 || count_ <= 0)
 		{
-			return i1.expirationtime < i2.expirationtime;
+			return false;
 		}
-		return i1.itemcode < i2.itemcode;
+
+		if (slot[slotIdx_].count < count_)
+		{
+			return false;
+		}
+		else if (slot[slotIdx_].count == count_)
+		{
+			slot[slotIdx_].Init();
+		}
+		else
+		{
+			slot[slotIdx_].count -= count_;
+		}
+
+		return true;
 	}
 
+	const Item& operator[](const int slotIdx_)
+	{
+		//if (slotIdx_ < 0 || slotIdx_ >= MAX_SLOT)
+		//{
+		//	throw std::out_of_range("");
+		//}
+		return slot[slotIdx_];
+	}
+
+private:
 	// 비어있는 슬롯의 인덱스를 리턴.
 	// 비어있는 슬롯이 없다면 -1을 리턴.
 	int GetEmptySlot(const int start = 0) const

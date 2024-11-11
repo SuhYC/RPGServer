@@ -3,10 +3,19 @@
 #include "GameMap.hpp"
 #include <map>
 #include "Time_Based_PriorityQueue.hpp"
+#include "MemoryPool.hpp"
+#include <unordered_map>
+
+const int ITEM_OBJECT_POOL_INSTANCE_COUNT = 100;
 
 class MapManager
 {
 public:
+	MapManager()
+	{
+		m_ItemObjectPool = std::make_unique<MemoryPool<ItemObject>>(ITEM_OBJECT_POOL_INSTANCE_COUNT);
+	}
+
 	~MapManager()
 	{
 		for (auto& i : m_mapList)
@@ -17,6 +26,8 @@ public:
 				i.second = nullptr;
 			}
 		}
+
+		m_ItemObjectPool.reset();
 	}
 
 	RPG::Map* GetMap(int mapcode_)
@@ -39,6 +50,12 @@ public:
 
 		ToDoQueue.push(currentTime + elaspedTime_, job_);
 
+		return;
+	}
+
+	void ReleaseItemObject(ItemObject* pItem_)
+	{
+		m_ItemObjectPool->Deallocate(pItem_);
 		return;
 	}
 
@@ -65,4 +82,5 @@ private:
 
 	Time_Based_PriorityQueue ToDoQueue;
 	std::unordered_map<int, RPG::Map*> m_mapList;
+	std::unique_ptr<MemoryPool<ItemObject>> m_ItemObjectPool;
 };

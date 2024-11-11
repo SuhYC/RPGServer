@@ -145,6 +145,7 @@
     <ClInclude Include="GameMap.hpp" />
     <ClInclude Include="Inventory.hpp" />
     <ClInclude Include="IOCP.hpp" />
+    <ClInclude Include="Item.hpp" />
     <ClInclude Include="ItemObject.hpp" />
     <ClInclude Include="Json.hpp" />
     <ClInclude Include="MapManager.hpp" />
@@ -156,6 +157,7 @@
     <ClInclude Include="RedisConnectionPool.hpp" />
     <ClInclude Include="RedisManager.hpp" />
     <ClInclude Include="ReqHandler.hpp" />
+    <ClInclude Include="RingBuffer.hpp" />
     <ClInclude Include="RPGServer.hpp" />
     <ClInclude Include="Time_Based_PriorityQueue.hpp" />
     <ClInclude Include="User.hpp" />

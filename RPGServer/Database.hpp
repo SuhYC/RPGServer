@@ -504,7 +504,20 @@ public:
 			return false;
 		}
 
-		return m_RedisManager.BuyItem(charCode_, itemCode_, extime_, count_, price);
+		REDISRETURN eRet;
+
+		// 락 획득 실패 시 재도전
+		while ((eRet = m_RedisManager.BuyItem(charCode_, itemCode_, extime_, count_, price)) == REDISRETURN::LOCK_FAILED)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(0));
+		}
+
+		if (eRet != REDISRETURN::SUCCESS)
+		{
+			return false;
+		}
+
+		return true;
 	}
 
 	// 일단 Redis에 저장하지 않고 서버가 직접 hashmap으로 가지고 있는다.
@@ -521,6 +534,27 @@ public:
 		}
 
 		return itr->second;
+	}
+
+	// 뿌려지는 아이템의 코드만 전달한다.
+	// return 0 : 실패함, return n : 코드가 n인 아이템을 드랍하는데 성공했다.
+	int DropItem(const int charCode_, const int slotIdx_, const int count_)
+	{
+		REDISRETURN eRet;
+
+		Item stItem;
+
+		while ((eRet = m_RedisManager.DropItem(charCode_, slotIdx_, count_, stItem)) == REDISRETURN::LOCK_FAILED)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(0));
+		}
+
+		if (eRet != REDISRETURN::SUCCESS)
+		{
+			return 0;
+		}
+
+		return stItem.itemcode;
 	}
 
 private:

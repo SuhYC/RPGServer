@@ -17,7 +17,11 @@ public:
 	~Time_Based_PriorityQueue()
 	{
 		m_isRun = false;
-		WorkThread.join();
+
+		if (WorkThread.joinable())
+		{
+			WorkThread.join();
+		}
 	}
 
 	void push(time_t reserved_time_, Func job_)
