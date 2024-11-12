@@ -2,6 +2,8 @@
 #include <string>
 #include "Database.hpp"
 #include <unordered_map>
+#include "MapManager.hpp"
+#include "UserManager.hpp"
 
 /*
 * Json -> param -> Operation
@@ -18,22 +20,6 @@
 
 const float DISTANCE_LIMIT_GET_OBJECT = 5.0f;
 
-enum class RESULTCODE
-{
-	SUCCESS,
-	SUCCESS_WITH_ALREADY_RESPONSE,	// 함수 내부에서 메시지를 보냈기 때문에 따로 처리할 필요 없음.
-	WRONG_PARAM,					// 요청번호와 맞지 않는 파라미터
-	SYSTEM_FAIL,					// 시스템의 문제
-	SIGNIN_FAIL,					// ID와 PW가 맞지 않음
-	SIGNIN_ALREADY_HAVE_SESSION,	// 이미 로그인된 계정
-	SIGNUP_FAIL,					// ID규칙이나 PW규칙이 맞지 않음
-	SIGNUP_ALREADY_IN_USE,			// 이미 사용중인 ID
-	WRONG_ORDER,					// 요청 서순이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
-	MODIFIED_MAPCODE,				// 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
-	REQ_FAIL,						// 현재 조건에 맞지 않아 실행이 실패함 (이미 사라진 아이템 등..)
-	UNDEFINED						// 알수없는 오류
-};
-
 class ReqHandler
 {
 public:
@@ -45,6 +31,9 @@ public:
 		Actions[MessageType::MODIFY_PW] = &ReqHandler::HandleModifyPW;
 		Actions[MessageType::GET_CHAR_LIST] = &ReqHandler::HandleGetCharList;
 		Actions[MessageType::GET_CHAR_INFO] = &ReqHandler::HandleGetCharInfo;
+		Actions[MessageType::RESERVE_CHAR_NAME] = &ReqHandler::HandleReserveCharName;
+		Actions[MessageType::CANCEL_CHAR_NAME_RESERVE] = &ReqHandler::HandleCancelCharNameReserve;
+		Actions[MessageType::CREATE_CHAR] = &ReqHandler::HandleCreateChar;
 		Actions[MessageType::SELECT_CHAR] = &ReqHandler::HandleSelectChar;
 
 		Actions[MessageType::PERFORM_SKILL] = &ReqHandler::HandlePerformSkill;
@@ -141,11 +130,13 @@ private:
 		// 이미 로그인한 계정
 		if (nRet == ALREADY_HAVE_SESSION)
 		{
-			//결과 전송
 			return RESULTCODE::SIGNIN_ALREADY_HAVE_SESSION;
 		}
 
 		pUser->SetUserCode(nRet);
+
+
+
 		return RESULTCODE::SUCCESS;
 	}
 
@@ -157,7 +148,7 @@ private:
 			return RESULTCODE::WRONG_PARAM;
 		}
 
-		eReturnCode eRet = m_DB.SignUp(stParam.id, stParam.pw);
+		eReturnCode eRet = m_DB.SignUp(stParam.id, stParam.pw, stParam.questno, stParam.ans, stParam.hint);
 
 		switch (eRet)
 		{
@@ -222,6 +213,39 @@ private:
 		// 별도의 데이터 전송
 
 		return RESULTCODE::SUCCESS_WITH_ALREADY_RESPONSE;
+	}
+
+	RESULTCODE HandleReserveCharName(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		ReserveCharNameParameter stParam;
+		m_JsonMaker.ToReserveCharNameParameter(param_, stParam);
+
+
+
+		return RESULTCODE::SUCCESS;
+	}
+
+	RESULTCODE HandleCancelCharNameReserve(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		// 같은 파라미터를 사용한다.
+		ReserveCharNameParameter stParam;
+		m_JsonMaker.ToReserveCharNameParameter(param_, stParam);
+
+
+
+		return RESULTCODE::SUCCESS;
+	}
+
+	RESULTCODE HandleCreateChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		CreateCharParameter stParam;
+		m_JsonMaker.ToCreateCharParameter(param_, stParam);
+
+
+
+
+
+		return RESULTCODE::SUCCESS;
 	}
 
 	RESULTCODE HandleSelectChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)

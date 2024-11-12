@@ -9,15 +9,25 @@
 #include "CharList.hpp"
 #include "Inventory.hpp"
 #include <codecvt>
+#include <iostream>
 
 /*
 * wstring을 codecvt한 것과 string은 서로 다른 값을 가진다.
 * -> 인코딩이 서로 다르기 때문.
-*  문자열은 wstring으로만 입력받는게 나을듯.
+* 문자열은 string으로만 입력받는게 나을듯.
+* 
 * 구조체->json : struct -> string
 * json->구조체 : string -> struct
 * 
-* !!json문자열은 레디스영역을 벗어나지 않도록 할 것!!
+* 캐릭터 닉네임 예약
+* 1. 캐릭터 생성 과정 중 닉네임 중복확인 후 사용할지 선택하는 과정을 거친다.
+* 2. 사용할지 선택하는 과정 중엔 예약된 상태로 다른 유저가 접근할 수 없도록 한다.
+*  예약 : Redis에 락을 거는데 성공했다면 User 정보에 획득한 락을 기록할 수 있도록 한다.
+*  예약 이후 1분의 시간을 부여하여 선택한다. 1분 내에 선택하지 않으면 락을 해제한다. 락의 유효기간은 2분으로 설정한다.
+*  - 사용한다 선택 (캐릭터 생성 요청)
+*	예약이 해당 유저에게 걸려있는지 User를 통해 확인하고 락이 있다면 캐릭터를 생성
+*  - 사용하지 않는다 선택
+*   해당 유저가 락이 있다면 예약을 해제한다.
 */ 
 
 
@@ -28,11 +38,30 @@ enum class MessageType
 	MODIFY_PW,
 	GET_CHAR_LIST,
 	GET_CHAR_INFO,
+	RESERVE_CHAR_NAME, // 캐릭터 생성 시 닉네임을 입력할 경우 미리 예약을 건 후, 가능한 닉네임인 경우 사용할 지 여부를 선택한다.
+	CANCEL_CHAR_NAME_RESERVE, // RESERVE_CHAR_NAME으로 예약한 닉네임을 취소한다.
+	CREATE_CHAR, // 캐릭터 생성 결정. DB에 캐릭터 정보를 기록한다.
 	SELECT_CHAR,
 	PERFORM_SKILL,
 	GET_OBJECT,
 	BUY_ITEM,
 	DROP_ITEM
+};
+
+enum class RESULTCODE
+{
+	SUCCESS,
+	SUCCESS_WITH_ALREADY_RESPONSE,	// 함수 내부에서 메시지를 보냈기 때문에 따로 처리할 필요 없음.
+	WRONG_PARAM,					// 요청번호와 맞지 않는 파라미터
+	SYSTEM_FAIL,					// 시스템의 문제
+	SIGNIN_FAIL,					// ID와 PW가 맞지 않음
+	SIGNIN_ALREADY_HAVE_SESSION,	// 이미 로그인된 계정
+	SIGNUP_FAIL,					// ID규칙이나 PW규칙이 맞지 않음
+	SIGNUP_ALREADY_IN_USE,			// 이미 사용중인 ID
+	WRONG_ORDER,					// 요청 서순이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
+	MODIFIED_MAPCODE,				// 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
+	REQ_FAIL,						// 현재 조건에 맞지 않아 실행이 실패함 (이미 사라진 아이템 등..)
+	UNDEFINED						// 알수없는 오류
 };
 
 struct ReqMessage
@@ -45,7 +74,7 @@ struct ReqMessage
 struct ResMessage
 {
 	unsigned int reqNo; // which msg's result
-	std::string msg; // result (success, fail, othermsg(ex. jsonstr of charinfo))
+	RESULTCODE resCode; // result (success, fail, othermsg)
 };
 
 struct SignInParameter
@@ -58,7 +87,7 @@ struct SignUpParameter
 {
 	std::string id;
 	std::string pw;
-	unsigned char questno; // 비밀번호 변경 문제
+	int questno; // 비밀번호 변경 문제
 	std::string ans; // 비밀번호 변경 답
 	std::string hint; // 비밀번호 변경 문제 힌트(유저기입)
 };
@@ -77,6 +106,18 @@ struct GetCharListParameter
 struct GetCharInfoParameter
 {
 	int charcode;
+};
+
+struct ReserveCharNameParameter
+{
+	std::string CharName;
+};
+
+struct CreateCharParameter
+{
+	std::string CharName;
+	// 캐릭터만 만들고 모든 진행이 가능하게 할지
+	// 계통을 선택하고 캐릭터를 만들면 해당 계통 내에서 가능하게 할지 고민 필요
 };
 
 struct SelectCharParameter
@@ -115,7 +156,6 @@ class JsonMaker
 public:
 	bool ToJsonString(const CharInfo& pInfo_, std::string& out_)
 	{
-
 		rapidjson::Document doc;
 		doc.SetObject();
 
@@ -252,9 +292,58 @@ public:
 		return true;
 	}
 
-	bool ToJsonString(const Inventory& inven_, std::string& out_)
+	// set of Item
+	// slot < MAX_SLOT
+	// Item : int itemcode, long long expirationtime, int count
+	bool ToJsonString(Inventory& inven_, std::string& out_)
 	{
-		// 작성 필요
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		auto& allocator = doc.GetAllocator();
+
+		rapidjson::Value array(rapidjson::kArrayType);
+
+		for (size_t i = 0; i < MAX_SLOT; i++)
+		{
+			rapidjson::Value itemValue(rapidjson::kObjectType);
+
+			const Item& item = inven_[i];
+
+			itemValue.AddMember("ItemCode", inven_[i].itemcode, allocator);
+			itemValue.AddMember("ExTime", inven_[i].expirationtime, allocator);
+			itemValue.AddMember("Count", inven_[i].count, allocator);
+			array.PushBack(itemValue, allocator);
+		}
+		
+		doc.AddMember("Inven", array, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+		doc.Accept(writer);
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToJsonString(const ResMessage& res_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("ReqNo", res_.reqNo, allocator);
+		doc.AddMember("ResCode", static_cast<int>(res_.resCode), allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+		doc.Accept(writer);
+
+		out_ = buffer.GetString();
 
 		return true;
 	}
@@ -262,7 +351,40 @@ public:
 	// out_ 매개변수로 들어온 객체는 초기화된다. 주의.
 	bool ToInventory(const std::string& str_, Inventory& out_)
 	{
-		// 작성 필요
+		rapidjson::Document doc;
+
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToInventory : " << rapidjson::GetParseError_En(doc.GetParseError()) << '\n';
+			return false;
+		}
+
+		if (!doc.HasMember("Inven") || !doc["Inven"].IsArray())
+		{
+			std::cerr << "Json::ToInventory : Incorrect Format.\n";
+			return false;
+		}
+
+		const rapidjson::Value& Inven = doc["Inven"];
+
+		for (size_t i = 0; i < MAX_SLOT; i++)
+		{
+			if (i >= Inven.Size())
+			{
+				out_[i].Init();
+				continue;
+			}
+
+			if (!Inven[i].HasMember("ItemCode") || !Inven[i]["ItemCode"].IsInt() ||
+				!Inven[i].HasMember("ExTime") || !Inven[i]["ExTime"].IsInt64() ||
+				!Inven[i].HasMember("Count") || !Inven[i]["Count"].IsInt())
+			{
+				std::cerr << "Json::ToInventory : Incorrect Format.\n";
+				return false;
+			}
+
+			out_[i].Init(Inven[i]["ItemCode"].GetInt(), Inven[i]["ExTime"].GetInt64(), Inven[i]["Count"].GetInt());
+		}
 
 		return true;
 	}
@@ -342,16 +464,7 @@ public:
 
 		out_.id = doc["ID"].GetString();
 		out_.pw = doc["PW"].GetString();
-
-		int nData = doc["QuestNo"].GetInt();
-
-		if (nData > 255)
-		{
-			std::cerr << "Json::ToSignUpParam : To Large QuestNo.\n";
-			return false;
-		}
-
-		out_.questno = static_cast<unsigned char>(nData);
+		out_.questno = doc["QuestNo"].GetInt();
 		out_.ans = doc["Answer"].GetString();
 		out_.hint = doc["Hint"].GetString();
 
@@ -416,6 +529,24 @@ public:
 		}
 
 		out_.charcode = doc["Charcode"].GetInt();
+
+		return true;
+	}
+
+	// CancelReserve와 동일한 parameter를 사용한다.
+	bool ToReserveCharNameParameter(const std::string& str_, ReserveCharNameParameter& out_)
+	{
+
+
+
+		return true;
+	}
+
+	bool ToCreateCharParameter(const std::string& str_, CreateCharParameter& out_)
+	{
+
+
+
 
 		return true;
 	}
@@ -520,6 +651,7 @@ public:
 
 		return true;
 	}
+
 
 private:
 

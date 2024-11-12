@@ -132,7 +132,7 @@ public:
 		}
 
 		Inventory inven;
-		//m_jsonMaker.ToInventory(strinven, inven);
+		m_jsonMaker.ToInventory(strInven, inven);
 
 		// 인벤토리에 추가
 		if (!inven.push_back(itemcode_, extime_, count_))
@@ -146,8 +146,8 @@ public:
 
 		std::string newStrInfo;
 
-		if (!m_jsonMaker.ToJsonString(info, newStrInfo)) //||
-			//!m_jsonMaker.ToJsonString(&inven, strinven))
+		if (!m_jsonMaker.ToJsonString(info, newStrInfo) ||
+			!m_jsonMaker.ToJsonString(inven, strInven))
 		{
 			std::cerr << "RedisManager::BuyItem : Json문자열 생성 실패\n";
 			Unlock(infokey);

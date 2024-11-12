@@ -206,7 +206,7 @@ public:
 		return true;
 	}
 
-	const Item& operator[](const int slotIdx_)
+	Item& operator[](const int slotIdx_)
 	{
 		//if (slotIdx_ < 0 || slotIdx_ >= MAX_SLOT)
 		//{

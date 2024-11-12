@@ -55,9 +55,11 @@ public:
 	}
 
 	// eReturnCode : SIGNUP_FAIL, SIGNUP_SUCCESS, SIGNUP_ALREADY_IN_USE
-	eReturnCode SignUp(std::string& id_, std::string& pw_)
+	eReturnCode SignUp(const std::string& id_, const std::string& pw_,
+		const int questno_, const std::string& ans_, const std::string& hint_)
 	{
-		if (!CheckPWIsValid(pw_) || !CheckIDIsValid(id_))
+		if (!CheckPWIsValid(pw_) || !CheckIDIsValid(id_) ||
+			!InjectionCheck(ans_) || !InjectionCheck(hint_))
 		{
 			// 유효하지 않은 입력
 			return eReturnCode::SIGNUP_FAIL;
@@ -74,7 +76,7 @@ public:
 		SQLPrepare(hstmt, (SQLWCHAR*)
 			L"IF NOT EXISTS (SELECT 1 FROM LOGINDATA WHERE ID = ?) "
 			L"BEGIN "
-			L"    INSERT INTO LOGINDATA (USERID, PASSWORD) VALUES (?, ?); "
+			L"    INSERT INTO LOGINDATA (USERID, PASSWORD, QUESTNO, HINT, ANSWER) VALUES (?, ?, ?, ?, ?); "
 			L"    SELECT 'S' AS Result; "
 			L"END "
 			L"ELSE "
@@ -84,11 +86,17 @@ public:
 
 		SQLLEN idLength = id_.length();
 		SQLLEN pwLength = pw_.length();
+		SQLLEN hintLength = hint_.length();
+		SQLLEN ansLength = ans_.length();
 
-		//std::string으로부터 std::wstring으로 변환하는 방법을 사용해야겠다..
+		int questno = questno_;
+
 		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
 		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
 		SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)pw_.c_str(), 0, &pwLength);
+		SQLBindParameter(hstmt, 4, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &questno, 0, NULL);
+		SQLBindParameter(hstmt, 5, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)hint_.c_str(), 0, &hintLength);
+		SQLBindParameter(hstmt, 6, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)ans_.c_str(), 0, &ansLength);
 
 		SQLRETURN retCode = SQLExecute(hstmt);
 
@@ -100,7 +108,7 @@ public:
 			return eReturnCode::SYSTEM_ERROR;
 		}
 
-		SQLWCHAR result_message[2]; // 'S' or 'F'
+		SQLCHAR result_message[2]; // 'S' or 'F'
 		SQLLEN resultlen;
 		retCode = SQLFetch(hstmt);
 
@@ -112,10 +120,10 @@ public:
 			return eReturnCode::SYSTEM_ERROR;
 		}
 
-		SQLRETURN dataRet = SQLGetData(hstmt, 1, SQL_C_WCHAR, result_message, sizeof(result_message) / sizeof(result_message[0]), &resultlen);
+		SQLRETURN dataRet = SQLGetData(hstmt, 1, SQL_C_CHAR, result_message, sizeof(result_message) / sizeof(result_message[0]), &resultlen);
 				
 		// SQLGetData Failed
-		if (dataRet == SQL_SUCCESS || dataRet == SQL_SUCCESS_WITH_INFO)
+		if (dataRet != SQL_SUCCESS && dataRet != SQL_SUCCESS_WITH_INFO)
 		{
 			ReleaseHandle(hstmt);
 			std::wcerr << L"Database::SIGNUP : Failed to Get Data\n";
@@ -128,7 +136,7 @@ public:
 			std::wcout << result_message[0] << "\n";
 		}
 
-		if (result_message[0] == L'S')
+		if (result_message[0] == 'S')
 		{
 			ReleaseHandle(hstmt);
 			return eReturnCode::SIGNUP_SUCCESS;
@@ -166,8 +174,8 @@ public:
 			L"SELECT USERCODE FROM LOGINDATA WHERE ID = ? AND PASSWORD = ?; "
 			, SQL_NTS);
 
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)id_.c_str(), 0, &idLength);
-		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLWCHAR*)pw_.c_str(), 0, &pwLength);
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
+		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLCHAR*)pw_.c_str(), 0, &pwLength);
 
 		SQLRETURN retCode = SQLExecute(hstmt);
 
@@ -175,16 +183,6 @@ public:
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
 			std::wcerr << L"DB::SIGNIN : Failed to Execute\n";
-
-			SQLWCHAR sqlState[6], errorMsg[256];
-			SQLINTEGER nativeError;
-			SQLSMALLINT msgLen;
-			SQLRETURN ret = SQLGetDiagRec(SQL_HANDLE_STMT, hstmt, 1, sqlState, &nativeError, errorMsg, sizeof(errorMsg) / sizeof(errorMsg[0]), &msgLen);
-
-			if (ret == SQL_SUCCESS || ret == SQL_SUCCESS_WITH_INFO)
-			{
-				std::wcerr << L"DB::SIGNUP : Error:" << errorMsg << L" (SQLState: " << sqlState << ')\n';
-			}
 
 			ReleaseHandle(hstmt);
 			return CLIENT_NOT_CERTIFIED;
@@ -560,14 +558,44 @@ public:
 private:
 	bool CheckIDIsValid(const std::string& id_)
 	{
+		if (id_.length() > 10 || id_.length() < 3)
+		{
+			return false;
+		}
 
+		// 영문 대소문자, 숫자만 허용
+		for (size_t i = 0; i < id_.length(); i++)
+		{
+			if (id_[i] > 'z' ||
+				(id_[i] < 'a' && id_[i] > 'Z') ||
+				(id_[i] < 'A' && id_[i] > '9') ||
+				id_[i] < '0')
+			{
+				return false;
+			}
+		}
 
 		return true;
 	}
 
 	bool CheckPWIsValid(const std::string& pw_)
 	{
+		if (pw_.length() > 10 || pw_.length() < 3)
+		{
+			return false;
+		}
 
+		// 영문 대소문자, 숫자만 허용
+		for (size_t i = 0; i < pw_.length(); i++)
+		{
+			if (pw_[i] > 'z' ||
+				(pw_[i] < 'a' && pw_[i] > 'Z') ||
+				(pw_[i] < 'A' && pw_[i] > '9') ||
+				pw_[i] < '0')
+			{
+				return false;
+			}
+		}
 
 		return true;
 	}
@@ -589,7 +617,7 @@ private:
 		return;
 	}
 
-	bool InjectionCheck(const std::wstring& str_)
+	bool InjectionCheck(const std::string& str_)
 	{
 		// 특수기호 제거
 		for (int i = 0; i < str_.size(); i++)
@@ -614,7 +642,7 @@ private:
 
 		// 예약어 제거
 
-		for (const std::wstring& word : m_ReservedWord)
+		for (const std::string& word : m_ReservedWord)
 		{
 			if (IsStringContains(str_, word))
 			{
@@ -626,7 +654,7 @@ private:
 	}
 
 	// Todo. RabinKarf로 대체하자.
-	bool IsStringContains(const std::wstring& orgstr_, const std::wstring& somestr_)
+	bool IsStringContains(const std::string& orgstr_, const std::string& somestr_)
 	{
 		size_t strsize1 = orgstr_.size(), strsize2 = somestr_.size();
 
@@ -668,18 +696,18 @@ private:
 		m_ReservedWord.clear();
 
 		// 예약어 : OR, SELECT, INSERT, DELETE, UPDATE, CREATE, DROP, EXEC, UNION, FETCH, DECLARE, TRUNCATE
-		m_ReservedWord.push_back(L"OR");
-		m_ReservedWord.push_back(L"SELECT");
-		m_ReservedWord.push_back(L"INSERT");
-		m_ReservedWord.push_back(L"DELETE");
-		m_ReservedWord.push_back(L"UPDATE");
-		m_ReservedWord.push_back(L"CREATE");
-		m_ReservedWord.push_back(L"DROP");
-		m_ReservedWord.push_back(L"EXEC");
-		m_ReservedWord.push_back(L"UNION");
-		m_ReservedWord.push_back(L"FETCH");
-		m_ReservedWord.push_back(L"DECLARE");
-		m_ReservedWord.push_back(L"TRUNCATE");
+		m_ReservedWord.push_back("OR");
+		m_ReservedWord.push_back("SELECT");
+		m_ReservedWord.push_back("INSERT");
+		m_ReservedWord.push_back("DELETE");
+		m_ReservedWord.push_back("UPDATE");
+		m_ReservedWord.push_back("CREATE");
+		m_ReservedWord.push_back("DROP");
+		m_ReservedWord.push_back("EXEC");
+		m_ReservedWord.push_back("UNION");
+		m_ReservedWord.push_back("FETCH");
+		m_ReservedWord.push_back("DECLARE");
+		m_ReservedWord.push_back("TRUNCATE");
 
 		return;
 	}
@@ -744,7 +772,7 @@ private:
 	RedisManager m_RedisManager;
 	JsonMaker m_JsonMaker;
 	std::unordered_map<int, int> m_PriceTable;
-	std::vector<std::wstring> m_ReservedWord;
+	std::vector<std::string> m_ReservedWord;
 	std::unique_ptr<MSSQL::ConnectionPool> m_Pool;
 	std::unique_ptr<MemoryPool<CharList>> m_CharListPool;
 	std::unique_ptr<MemoryPool<CharInfo>> m_CharInfoPool;
