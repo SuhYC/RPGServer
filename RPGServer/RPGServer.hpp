@@ -94,6 +94,9 @@ private:
 
 	void OnReceive(const unsigned short index_, char* pData_, const DWORD ioSize_) override
 	{
+		// 링버퍼로 구조를 바꾼다고 하면 받은 데이터를 패킷 크기에 맞게 재단하여 ReqHandler에 요청해야한다.
+		// 패킷의 크기보다 받은 데이터가 적다면 보관할 장소도 필요하다. (아마도 Connection에 저장하는게 좋겠지?)
+
 		std::string str;
 		str.assign(pData_, ioSize_);
 

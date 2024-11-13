@@ -45,20 +45,22 @@ enum class MessageType
 	PERFORM_SKILL,
 	GET_OBJECT,
 	BUY_ITEM,
-	DROP_ITEM
+	DROP_ITEM,
+	MOVE_MAP, // 맵 이동 요청
+	POS_INFO, // 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
+	LAST = POS_INFO // enum class가 수정되면 마지막 원소로 지정할 것
 };
 
 enum class RESULTCODE
 {
 	SUCCESS,
-	SUCCESS_WITH_ALREADY_RESPONSE,	// 함수 내부에서 메시지를 보냈기 때문에 따로 처리할 필요 없음.
 	WRONG_PARAM,					// 요청번호와 맞지 않는 파라미터
 	SYSTEM_FAIL,					// 시스템의 문제
 	SIGNIN_FAIL,					// ID와 PW가 맞지 않음
 	SIGNIN_ALREADY_HAVE_SESSION,	// 이미 로그인된 계정
 	SIGNUP_FAIL,					// ID규칙이나 PW규칙이 맞지 않음
 	SIGNUP_ALREADY_IN_USE,			// 이미 사용중인 ID
-	WRONG_ORDER,					// 요청 서순이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
+	WRONG_ORDER,					// 요청이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
 	MODIFIED_MAPCODE,				// 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
 	REQ_FAIL,						// 현재 조건에 맞지 않아 실행이 실패함 (이미 사라진 아이템 등..)
 	UNDEFINED						// 알수없는 오류
@@ -74,7 +76,8 @@ struct ReqMessage
 struct ResMessage
 {
 	unsigned int reqNo; // which msg's result
-	RESULTCODE resCode; // result (success, fail, othermsg)
+	RESULTCODE resCode; // result (success, fail ...)
+	std::string msg; // optional (ex. charinfo jsonstr)
 };
 
 struct SignInParameter
@@ -338,6 +341,12 @@ public:
 		doc.AddMember("ReqNo", res_.reqNo, allocator);
 		doc.AddMember("ResCode", static_cast<int>(res_.resCode), allocator);
 
+		// optional
+		if (!res_.msg.empty())
+		{
+			doc.AddMember("Msg", res_.msg, allocator);
+		}
+
 		// Make JsonString
 		rapidjson::StringBuffer buffer;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
@@ -408,7 +417,7 @@ public:
 
 		int type = doc["Type"].GetInt();
 
-		if (type > static_cast<int>(MessageType::DROP_ITEM) || type < static_cast<int>(MessageType::SIGNIN))
+		if (type > static_cast<int>(MessageType::LAST) || type < static_cast<int>(MessageType::SIGNIN))
 		{
 			std::cerr << "Json::ToReqMessage : Not Defined MessageType.\n";
 			return false;
@@ -536,8 +545,20 @@ public:
 	// CancelReserve와 동일한 parameter를 사용한다.
 	bool ToReserveCharNameParameter(const std::string& str_, ReserveCharNameParameter& out_)
 	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToReserveCharNameParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << '\n';
+			return false;
+		}
 
+		if (!doc.HasMember("CharName") || !doc["CharName"].IsString())
+		{
+			std::cerr << "Json::ToReserveCharNameParam : Incorrect Format.\n";
+			return false;
+		}
 
+		out_.CharName = std::string(doc["CharName"].GetString());
 
 		return true;
 	}
@@ -600,9 +621,6 @@ public:
 	bool ToBuyItemParameter(const std::string& str_, BuyItemParameter& out_)
 	{
 		// 작성 필요
-		// NPC가 접근가능한지 같은걸 확인해야할지
-		// 권한 같은 걸 확인해야할지 (이건 파라미터에서 해결할 문제는 아님)
-		// 고민 필요
 	}
 
 	bool ToGetObjectParameter(const std::string& str_, GetObjectParameter& out_)

@@ -54,8 +54,20 @@ public:
 		throw std::out_of_range("인덱스 범위 초과");
 	}
 
-	size_t size() const { return m_Size; }
+	bool find(const int charcode_)
+	{
+		for (size_t i = 0; i < m_Size; i++)
+		{
+			if (charcode_ == mp_Data[i])
+			{
+				return true;
+			}
+		}
 
+		return false;
+	}
+
+	size_t size() const { return m_Size; }
 private:
 	int* mp_Data;
 	size_t m_Size;

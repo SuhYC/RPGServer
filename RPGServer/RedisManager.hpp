@@ -82,6 +82,11 @@ public:
 		return Get(key, out_);
 	}
 
+	// 아이템가격과 플레이어의 소지금만 확인한다.
+	// REDISRETURN::WRONG_PARAM : 잘못된 파라미터기 때문에 재시도하지 않는다.
+	// REDISRETURN::LOCK_FAILED : 다른 스레드가 접근중이다. 재시도해도 된다.
+	// REDISRETURN::FAIL : 레디스 혹은 RapidJson의 수행 도중 발생한 실패.
+	// REDISRETURN::SUCCESS : 구매반영 성공
 	REDISRETURN BuyItem(const int charNo_, const int itemcode_, const time_t extime_, const int count_, const int price_)
 	{
 		// 구매 갯수 제한
