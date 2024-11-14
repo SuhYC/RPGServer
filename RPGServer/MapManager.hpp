@@ -32,6 +32,11 @@ public:
 
 	RPG::Map* GetMap(int mapcode_)
 	{
+		if (mapcode_ < 1)
+		{
+			return nullptr;
+		}
+
 		auto itr = m_mapList.find(mapcode_);
 
 		if (itr != m_mapList.end())
@@ -58,6 +63,7 @@ public:
 		m_ItemObjectPool->Deallocate(pItem_);
 		return;
 	}
+
 
 	std::function<PacketData*()> AllocatePacket;
 	std::function<void(PacketData*)> DeallocatePacket;

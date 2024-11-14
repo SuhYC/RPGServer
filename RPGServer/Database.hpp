@@ -20,6 +20,8 @@
 #include "CharInfo.hpp"
 #include "MemoryPool.hpp"
 #include <unordered_map>
+#include "Shop.hpp"
+#include "MapEdge.hpp"
 
 const bool DB_DEBUG = true;
 const int CLIENT_NOT_CERTIFIED = 0;
@@ -45,6 +47,8 @@ public:
 		m_CharListPool = std::make_unique<MemoryPool<CharList>>(CHARLIST_MEMORY_POOL_COUNT);
 		MakeReservedWordList();
 		MakePriceTable();
+		MakeSalesList();
+		MakeMapEdgeList();
 	}
 
 	virtual ~Database()
@@ -518,20 +522,20 @@ public:
 		return true;
 	}
 
-	// 일단 Redis에 저장하지 않고 서버가 직접 hashmap으로 가지고 있는다.
-	// 서버단에서 해결할 업무가 많아 서버별 부하를 분산하려면 추후 Redis에 옮겨도 될듯.
-	// 지금은 어차피 PC 한대에서 모두 해결해야 하기에 Redis서버를 분산해놓을 수도 없으니 그냥 서버가 가지고 있는다.
+	// return -1 : 해당하는 아이템 정보 없음.
 	int GetPrice(const int itemcode_) noexcept
 	{
-		auto itr = m_PriceTable.find(itemcode_);
+		return m_Shop.GetPrice(itemcode_);
+	}
 
-		if (itr == m_PriceTable.end())
-		{
-			// 해당하는 아이템 정보 없음
-			return -1;
-		}
+	bool FindSalesList(const int npcCode_, const int itemCode_)
+	{
+		return m_Shop.FindSalesList(npcCode_, itemCode_);
+	}
 
-		return itr->second;
+	bool FindMapEdge(const int fromMapCode_, const int toMapCode_)
+	{
+		return m_MapEdge.Find(fromMapCode_, toMapCode_);
 	}
 
 	// 뿌려지는 아이템의 코드만 전달한다.
@@ -715,7 +719,7 @@ private:
 	void MakePriceTable()
 	{
 		// MSSQL에서 ITEMTABLE에 있는 정보 긁어오기.
-		// [ITEMCODE][PURCHASEPRICE]
+		// T(ITEMTABLE) : [ITEMCODE][PURCHASEPRICE]
 		// 일단은 아이템이 많지는 않을거 같은데 10MB를 넘어가면 10MB단위로 잘라서 가져오는 것이 좋다고 한다.
 		// 일단은 행별 데이터는 8byte로 설정되어 있다.
 
@@ -753,25 +757,117 @@ private:
 
 		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
 		{
-			auto pair = m_PriceTable.emplace(itemcode, purchasePrice);
-			if (pair.second == false)
-			{
-				auto itr = m_PriceTable.find(itemcode);
-
-				std::cerr << "DB::MakePriceTable : Failed to Emplace on map : (" << itemcode << ", " << itr->second << ", " << purchasePrice << ")\n";
-			}
+			m_Shop.InsertPrice(itemcode, purchasePrice);
 
 			retCode = SQLFetch(hstmt);
 		}
 
-		m_Pool->Deallocate(hstmt);
+		ReleaseHandle(hstmt);
+
+		return;
+	}
+	
+	void MakeSalesList()
+	{
+		// T(SALESLIST) : [NPCCODE] [ITEMCODE]
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::MakeSalesList : 핸들 발급 실패\n";
+			return;
+		}
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT NPCCODE, ITEMCODE "
+			L"FROM SALESLIST", SQL_NTS);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			std::cerr << "Database::MakeSalesList : Failed to Execute\n";
+			return;
+		}
+
+		int npccode;
+		SQLLEN npccodeLen;
+		int itemcode;
+		SQLLEN itemcodeLen;
+
+		SQLBindCol(hstmt, 1, SQL_C_LONG, &npccode, sizeof(npccode), &npccodeLen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &itemcode, sizeof(itemcode), &itemcodeLen);
+
+		retCode = SQLFetch(hstmt);
+
+		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
+		{
+			m_Shop.InsertSalesList(npccode, itemcode);
+
+			retCode = SQLFetch(hstmt);
+		}
+
+		ReleaseHandle(hstmt);
+
+		return;
+	}
+
+	void MakeMapEdgeList()
+	{
+		// T(MAP_EDGE) : [FROM_MAP_CODE] [TO_MAP_CODE]
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::MakeMapEdgeList : 핸들 발급 실패\n";
+			return;
+		}
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT FROM_MAP_CODE, TO_MAP_CODE "
+			L"FROM MAP_EDGE", SQL_NTS);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			std::cerr << "Database::MakeMapEdgeList : Failed to Execute\n";
+			return;
+		}
+
+		int fromcode;
+		SQLLEN fromcodeLen;
+		int tocode;
+		SQLLEN tocodeLen;
+
+		SQLBindCol(hstmt, 1, SQL_C_LONG, &fromcode, sizeof(fromcode), &fromcodeLen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &tocode, sizeof(tocode), &tocodeLen);
+
+		retCode = SQLFetch(hstmt);
+
+		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
+		{
+			m_MapEdge.Insert(fromcode, tocode);
+
+			retCode = SQLFetch(hstmt);
+		}
+
+		ReleaseHandle(hstmt);
 
 		return;
 	}
 
 	RedisManager m_RedisManager;
 	JsonMaker m_JsonMaker;
-	std::unordered_map<int, int> m_PriceTable;
+	Shop m_Shop;
+	MapEdge m_MapEdge;
+
 	std::vector<std::string> m_ReservedWord;
 	std::unique_ptr<MSSQL::ConnectionPool> m_Pool;
 	std::unique_ptr<MemoryPool<CharList>> m_CharListPool;

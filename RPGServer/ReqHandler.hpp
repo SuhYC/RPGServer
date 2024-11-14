@@ -13,12 +13,20 @@
 * 각 동작을 핸들하는 함수에서 결과 송신까지 함께하기로 결정.
 * 
 * BuyItem은 일단 맵마다 NPC를 배치하고
-* 1. 플레이어가 위치한 맵에 NPC가 있는지 확인하고
-* 2. NPC가 파는 물품에 해당 아이템이 있는지 확인하고
+* 1. 플레이어가 위치한 맵에 NPC가 있는지 확인하고 -> 해당 정보 DB에 추가 필요 [mapcode] [npccode]
+* 2. NPC가 파는 물품에 해당 아이템이 있는지 확인하고 -> 해당 정보 DB에 추가 필요 [npccode] [itemcode]
 * 3. 해당 아이템의 가격과 비교하여 구매할 수 있는지 (일단 DB를 통해 가격을 확인하고 Redis에 수정요청하는 부분은 만들어두었다.)
 * 확인하는 방식으로 하면 좋을 것 같다.
 * 아직 더 고민해보고 결정.
 * 
+* MoveMap은 DB에 맵간 연결정보를 기록하고 -> DB에 추가 필요 [mapcode] [mapcode]
+* 이를 서버가 시작할때 받아와 DB가 가지고 있는 것으로 한다. (MapEdge)
+* 이동가능여부를 DB로부터 확인받고 이행한다.
+* 
+* todo. DB에 npc-item 정보와 -> npc가 해당 아이템을 판매한다는 정보
+* map-npc 정보와 -> 해당 맵에 npc가 존재한다는 정보
+* item-price정보와 -> 해당 아이템의 기본 상점 구매가 정보
+* map-map정보를 기록하여야함. -> 해당 맵에서 다음 맵으로 이동할 수 있다는 정보
 */
 
 const float DISTANCE_LIMIT_GET_OBJECT = 5.0f;
@@ -35,7 +43,7 @@ public:
 		Actions[MessageType::SIGNUP] = &ReqHandler::HandleSignUp;
 		Actions[MessageType::MODIFY_PW] = &ReqHandler::HandleModifyPW;
 		Actions[MessageType::GET_CHAR_LIST] = &ReqHandler::HandleGetCharList;
-		Actions[MessageType::GET_CHAR_INFO] = &ReqHandler::HandleGetCharInfo;
+		Actions[MessageType::GET_CHAR_INFO] = &ReqHandler::HandleGetCharInfo; // 물론 이건 인게임에서 타유저 정보를 가져오는데도 써야한다.
 		Actions[MessageType::RESERVE_CHAR_NAME] = &ReqHandler::HandleReserveCharName;
 		Actions[MessageType::CANCEL_CHAR_NAME_RESERVE] = &ReqHandler::HandleCancelCharNameReserve;
 		Actions[MessageType::CREATE_CHAR] = &ReqHandler::HandleCreateChar;
@@ -46,6 +54,9 @@ public:
 		Actions[MessageType::GET_OBJECT] = &ReqHandler::HandleGetObject;
 		Actions[MessageType::BUY_ITEM] = &ReqHandler::HandleBuyItem;
 		Actions[MessageType::DROP_ITEM] = &ReqHandler::HandleDropItem;
+		Actions[MessageType::USE_ITEM] = &ReqHandler::HandleUseItem;
+		Actions[MessageType::MOVE_MAP] = &ReqHandler::HandleMoveMap;
+		Actions[MessageType::POS_INFO] = &ReqHandler::HandlePosInfo;
 	}
 
 	void Init(const unsigned short MaxClient_)
@@ -70,7 +81,7 @@ public:
 		ReqMessage msg;
 		if (!m_JsonMaker.ToReqMessage(Req_, msg))
 		{
-
+			// ReqMessage포맷조차 안맞췄다고..?
 			return;
 		}
 
@@ -293,7 +304,15 @@ private:
 	RESULTCODE HandleReserveCharName(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		ReserveCharNameParameter stParam;
-		m_JsonMaker.ToReserveCharNameParameter(param_, stParam);
+		if (!m_JsonMaker.ToReserveCharNameParameter(param_, stParam))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::WRONG_PARAM;
+		}
 
 
 
@@ -304,7 +323,15 @@ private:
 	{
 		// 같은 파라미터를 사용한다.
 		ReserveCharNameParameter stParam;
-		m_JsonMaker.ToReserveCharNameParameter(param_, stParam);
+		if (!m_JsonMaker.ToReserveCharNameParameter(param_, stParam))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::WRONG_PARAM;
+		}
 
 
 
@@ -314,7 +341,15 @@ private:
 	RESULTCODE HandleCreateChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		CreateCharParameter stParam;
-		m_JsonMaker.ToCreateCharParameter(param_, stParam);
+		if (!m_JsonMaker.ToCreateCharParameter(param_, stParam))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::WRONG_PARAM;
+		}
 
 
 
@@ -382,7 +417,15 @@ private:
 	RESULTCODE HandlePerformSkill(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		PerformSkillParameter stParam;
-		m_JsonMaker.ToPerformSkillParameter(param_, stParam);
+		if (!m_JsonMaker.ToPerformSkillParameter(param_, stParam))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::WRONG_PARAM;
+		}
 
 		// --캐릭터가 스킬을 사용했다는 사실을 전파 (GameMap의 SendToAll을 만들고 사용하자.)
 		
@@ -466,11 +509,66 @@ private:
 
 	RESULTCODE HandleBuyItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
+		BuyItemParameter stParam;
+		if (!m_JsonMaker.ToBuyItemParameter(param_, stParam))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::WRONG_PARAM;
+		}
+
 		// 1. 유저정보 확인
+		
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
+
 		// 2. 캐릭터 위치 확인
+		
+		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
+		if (pMap == nullptr)
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_ORDER))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+			return RESULTCODE::WRONG_ORDER;
+		}
+
 		// 3. 해당 위치의 npc 확인
-		// 4. npc의 판매목록 확인
+		
+
+
+		// 4. npc의 판매목록 확인 : 유효기간도 확인할것.
+	
+		// 판매목록에 없음
+		if (!m_DB.FindSalesList(stParam.npccode, stParam.itemcode))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_ORDER))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+			return RESULTCODE::WRONG_ORDER;
+		}
+
 		// 5. 아이템 구매 시도 (DB -> REDIS)
+
+		// 소지금 부족 혹은 인벤토리 상태 때문에 실패
+		if (!m_DB.BuyItem(pUser->GetCharCode(), stParam.itemcode, 0, stParam.count))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::REQ_FAIL;
+		}
+
+		if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS))
+		{
+			return RESULTCODE::UNDEFINED;
+		}
 
 		return RESULTCODE::SUCCESS;
 	}
@@ -515,6 +613,86 @@ private:
 		{
 			return RESULTCODE::UNDEFINED;
 		}
+
+		return RESULTCODE::SUCCESS;
+	}
+
+	RESULTCODE HandleUseItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		// DB에 사용효과관련 테이블도 만들어야겠다.
+		// HP회복 MP회복 STR증가 DEX증가 INT증가 MEN증가 PHYSICATT증가 MAGICATT증가 ...
+
+		UseItemParameter stParam;
+
+		if (!m_JsonMaker.ToUseItemParameter(param_, stParam))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::WRONG_PARAM;
+		}
+
+
+
+
+		return RESULTCODE::SUCCESS;
+	}
+
+	RESULTCODE HandleMoveMap(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		MoveMapParameter stParam;
+		if (!m_JsonMaker.ToMoveMapParameter(param_, stParam))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::WRONG_PARAM;
+		}
+
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
+		
+		// 해당 맵에서 요청한 맵으로 갈 수 없음
+		if (!m_DB.FindMapEdge(pUser->GetMapCode(), stParam.tomapcode))
+		{
+			if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_ORDER))
+			{
+				return RESULTCODE::UNDEFINED;
+			}
+
+			return RESULTCODE::WRONG_ORDER;
+		}
+
+		// 맵 이동
+		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
+		pMap->UserExit(userindex_);
+		pMap = m_MapManager.GetMap(stParam.tomapcode);
+		pMap->UserEnter(userindex_, pUser);
+
+		if (!SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS))
+		{
+			return RESULTCODE::UNDEFINED;
+		}
+
+		return RESULTCODE::SUCCESS;
+	}
+
+	// 해당 처리는 클라이언트에게 결과반환을 하지 않는다.
+	RESULTCODE HandlePosInfo(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		PosInfoParameter stParam;
+		if (!m_JsonMaker.ToPosInfoParameter(param_, stParam))
+		{
+
+			return RESULTCODE::WRONG_PARAM;
+		}
+
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
+
+		pUser->UpdatePosition(stParam.pos, stParam.vel);
 
 		return RESULTCODE::SUCCESS;
 	}

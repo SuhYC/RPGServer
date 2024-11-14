@@ -46,6 +46,7 @@ enum class MessageType
 	GET_OBJECT,
 	BUY_ITEM,
 	DROP_ITEM,
+	USE_ITEM,
 	MOVE_MAP, // 맵 이동 요청
 	POS_INFO, // 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
 	LAST = POS_INFO // enum class가 수정되면 마지막 원소로 지정할 것
@@ -60,7 +61,7 @@ enum class RESULTCODE
 	SIGNIN_ALREADY_HAVE_SESSION,	// 이미 로그인된 계정
 	SIGNUP_FAIL,					// ID규칙이나 PW규칙이 맞지 않음
 	SIGNUP_ALREADY_IN_USE,			// 이미 사용중인 ID
-	WRONG_ORDER,					// 요청이 맞지 않음 (유저로그인이 되지 않았는데 캐릭터코드를 요청함)
+	WRONG_ORDER,					// 요청이 상황에 맞지 않음
 	MODIFIED_MAPCODE,				// 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
 	REQ_FAIL,						// 현재 조건에 맞지 않아 실행이 실패함 (이미 사라진 아이템 등..)
 	UNDEFINED						// 알수없는 오류
@@ -99,6 +100,7 @@ struct ModifyPWParameter
 {
 	std::string id;
 	std::string ans;
+	std::string newpw;
 };
 
 struct GetCharListParameter
@@ -136,15 +138,17 @@ struct PerformSkillParameter
 	long long timeValue; // 클라이언트에서 측정한 시간, 해당 시간을 기반으로 난수사용하여 데미지 계산
 };
 
-struct BuyItemParameter
-{
-
-};
-
 struct GetObjectParameter
 {
 	int mapcode;
 	int objectidx;
+};
+
+struct BuyItemParameter
+{
+	int npccode;
+	int itemcode;
+	int count;
 };
 
 struct DropItemParameter
@@ -152,6 +156,22 @@ struct DropItemParameter
 	int mapcode;
 	int slotidx;
 	int count;
+};
+
+struct UseItemParameter
+{
+	int itemidx;
+};
+
+struct MoveMapParameter
+{
+	int tomapcode;
+};
+
+struct PosInfoParameter
+{
+	Vector2 pos;
+	Vector2 vel;
 };
 
 class JsonMaker
@@ -639,7 +659,7 @@ public:
 			std::cerr << "Json::ToGetObjectParam : Incorrect Format.\n";
 			return false;
 		}
-
+		
 		out_.mapcode = doc["MapCode"].GetInt();
 		out_.objectidx = doc["ItemIdx"].GetUint();
 
@@ -670,6 +690,73 @@ public:
 		return true;
 	}
 
+	bool ToUseItemParameter(const std::string& str_, UseItemParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (!doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToUseItemParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("ItemIdx") || !doc["ItemIdx"].IsInt())
+		{
+			std::cerr << "Json::ToUseItemParam : Incorrect Format\n";
+
+			return false;
+		}
+
+		out_.itemidx = doc["ItemIdx"].GetInt();
+
+		return true;
+	}
+
+	bool ToMoveMapParameter(const std::string& str_, MoveMapParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToMoveMapParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+
+			return false;
+		}
+
+		if (!doc.HasMember("MapCode") || !doc["MapCode"].IsInt())
+		{
+			std::cerr << "Json::ToMoveMapParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.tomapcode = doc["MapCode"].GetInt();
+
+		return true;
+	}
+
+	bool ToPosInfoParameter(const std::string& str_, PosInfoParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (!doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToPosInfoParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("PosX") || !doc["PosX"].IsFloat() ||
+			!doc.HasMember("PosY") || !doc["PosY"].IsFloat() ||
+			!doc.HasMember("VelX") || !doc["VelX"].IsFloat() ||
+			!doc.HasMember("VelY") || !doc["VelY"].IsFloat())
+		{
+			std::cerr << "Json::ToPosInfoParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.pos.x = doc["PosX"].GetFloat();
+		out_.pos.y = doc["PosY"].GetFloat();
+		out_.vel.x = doc["VelX"].GetFloat();
+		out_.vel.y = doc["VelY"].GetFloat();
+
+		return true;
+	}
 
 private:
 
