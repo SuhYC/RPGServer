@@ -4,6 +4,7 @@
 #include "Vector.hpp"
 #include <functional>
 #include <iostream>
+#include <chrono>
 
 class User
 {
@@ -11,7 +12,7 @@ public:
 	User(const int idx_) : m_idx(idx_)
 	{
 		Clear();
-		m_LastUpdateTime = std::chrono::system_clock::now();
+		m_LastUpdateTime = std::chrono::steady_clock::now();
 	}
 
 	~User()
@@ -34,7 +35,7 @@ public:
 
 	void UpdatePosition(Vector2& position_, Vector2& velocity_)
 	{
-		m_LastUpdateTime = std::chrono::system_clock::now();
+		m_LastUpdateTime = std::chrono::steady_clock::now();
 		m_stPosition = position_;
 		m_stVelocity = velocity_;
 	}
@@ -97,7 +98,7 @@ public:
 	// 위치와 속도를 이용해 마지막 업데이트로부터 시간차를 이용해 위치를 계산한다.
 	Vector2 GetPosition() const noexcept
 	{
-		auto now = std::chrono::system_clock::now();
+		auto now = std::chrono::steady_clock::now();
 		auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_LastUpdateTime);
 		int count = elapsedTime.count();
 
@@ -118,7 +119,7 @@ private:
 
 	Vector2 m_stPosition;
 	Vector2 m_stVelocity; // delta(position) / ms로 할것
-	std::chrono::system_clock::time_point m_LastUpdateTime;
+	std::chrono::steady_clock::time_point m_LastUpdateTime;
 
 	bool m_IsConnected;
 };

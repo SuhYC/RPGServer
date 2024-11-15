@@ -48,6 +48,8 @@ enum class MessageType
 	DROP_ITEM,
 	USE_ITEM,
 	MOVE_MAP, // 맵 이동 요청
+	CHAT_EVERYONE, // 해당 맵의 모든 인원에게 채팅 (다른 종류의 채팅은 더 생각해보자.)
+
 	POS_INFO, // 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
 	LAST = POS_INFO // enum class가 수정되면 마지막 원소로 지정할 것
 };
@@ -64,6 +66,7 @@ enum class RESULTCODE
 	WRONG_ORDER,					// 요청이 상황에 맞지 않음
 	MODIFIED_MAPCODE,				// 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
 	REQ_FAIL,						// 현재 조건에 맞지 않아 실행이 실패함 (이미 사라진 아이템 등..)
+	SEND_INFO,						// 해당 유저의 요청에 의해 전달된 정보가 아닌 정보전달 (채팅, 맵변화, 다른플레이어 상호작용...)
 	UNDEFINED						// 알수없는 오류
 };
 
@@ -166,6 +169,11 @@ struct UseItemParameter
 struct MoveMapParameter
 {
 	int tomapcode;
+};
+
+struct ChatEveryoneParameter
+{
+
 };
 
 struct PosInfoParameter
@@ -364,7 +372,12 @@ public:
 		// optional
 		if (!res_.msg.empty())
 		{
-			doc.AddMember("Msg", res_.msg, allocator);
+			// rapidjson::Document::AddMember에서 std::string을 호환하지 않는다.
+			// rapidjson::Value로 변환하여 전달한다.
+			
+			rapidjson::Value val;
+			val.SetString(res_.msg.c_str(), allocator);
+			doc.AddMember("Msg", val, allocator);
 		}
 
 		// Make JsonString
@@ -640,7 +653,27 @@ public:
 
 	bool ToBuyItemParameter(const std::string& str_, BuyItemParameter& out_)
 	{
-		// 작성 필요
+		rapidjson::Document doc;
+
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToBuyItemParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << '\n';
+			return false;
+		}
+
+		if (!doc.HasMember("Count") || !doc["Count"].IsInt() ||
+			!doc.HasMember("ItemCode") || !doc["ItemCode"].IsInt() ||
+			!doc.HasMember("NPCCode") || !doc["NPCCode"].IsInt())
+		{
+			std::cerr << "Json::ToBuyItemParam : Incorrect Format\n";
+			return false;
+		}
+
+		out_.count = doc["Count"].GetInt();
+		out_.itemcode = doc["ItemCode"].GetInt();
+		out_.npccode = doc["NPCCode"].GetInt();
+
+		return true;
 	}
 
 	bool ToGetObjectParameter(const std::string& str_, GetObjectParameter& out_)
@@ -728,6 +761,21 @@ public:
 		}
 
 		out_.tomapcode = doc["MapCode"].GetInt();
+
+		return true;
+	}
+
+	bool ToChatEveryoneParameter(const std::string& str_, ChatEveryoneParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToChatEveryoneParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+
+			return false;
+		}
+
+
 
 		return true;
 	}

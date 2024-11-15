@@ -148,6 +148,8 @@
     <ClInclude Include="Item.hpp" />
     <ClInclude Include="ItemObject.hpp" />
     <ClInclude Include="Json.hpp" />
+    <ClInclude Include="MapEdge.hpp" />
+    <ClInclude Include="MapInfo.hpp" />
     <ClInclude Include="MapManager.hpp" />
     <ClInclude Include="MemoryPool.hpp" />
     <ClInclude Include="Monster.hpp" />
@@ -159,6 +161,7 @@
     <ClInclude Include="ReqHandler.hpp" />
     <ClInclude Include="RingBuffer.hpp" />
     <ClInclude Include="RPGServer.hpp" />
+    <ClInclude Include="Shop.hpp" />
     <ClInclude Include="Time_Based_PriorityQueue.hpp" />
     <ClInclude Include="User.hpp" />
     <ClInclude Include="UserManager.hpp" />

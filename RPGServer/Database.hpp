@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include "Shop.hpp"
 #include "MapEdge.hpp"
+#include "MapInfo.hpp"
 
 const bool DB_DEBUG = true;
 const int CLIENT_NOT_CERTIFIED = 0;
@@ -49,6 +50,8 @@ public:
 		MakePriceTable();
 		MakeSalesList();
 		MakeMapEdgeList();
+		MakeMapNPCInfo();
+		MakeMapMonsterInfo();
 	}
 
 	virtual ~Database()
@@ -538,6 +541,25 @@ public:
 		return m_MapEdge.Find(fromMapCode_, toMapCode_);
 	}
 
+	bool FindNPCInfo(const int mapCode_, const int NPCCode_)
+	{
+		return m_MapInfo.FindMapNPCInfo(mapCode_, NPCCode_);
+	}
+
+	bool FindMonsterInfo(const int mapCode_, const int monsterCode_)
+	{
+		return m_MapInfo.FindMapMonsterInfo(mapCode_, monsterCode_);
+	}
+
+	// 처음 맵에 들어가는 인원이 해당 함수로 몬스터를 소환해주어야한다.
+	// 맵에 소환되는 몬스터 정보를 조금 다른 식으로 바꿔야할것 같다.
+	// 1. 몬스터 종류
+	// 2. 소환 위치
+	std::pair<std::unordered_multimap<int, int>::iterator, std::unordered_multimap<int, int>::iterator>&& GetMonsterInfo(const int mapcode_)
+	{
+		return m_MapInfo.Get_Map_MonsterInfo(mapcode_);
+	}
+
 	// 뿌려지는 아이템의 코드만 전달한다.
 	// return 0 : 실패함, return n : 코드가 n인 아이템을 드랍하는데 성공했다.
 	int DropItem(const int charCode_, const int slotIdx_, const int count_)
@@ -863,10 +885,107 @@ private:
 		return;
 	}
 
+	void MakeMapNPCInfo()
+	{
+		// T(MAPNPCINFO) : [MAPCODE][NPCCODE]
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::MakeMapNPCInfo : 핸들 발급 실패\n";
+			return;
+		}
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT MAPCODE, NPCCODE "
+			L"FROM MAPNPCINFO", SQL_NTS);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			std::cerr << "Database::MakeMapNPCInfo : Failed to Execute\n";
+			return;
+		}
+
+		int mapcode;
+		SQLLEN mapcodeLen;
+		int npccode;
+		SQLLEN npccodeLen;
+
+		SQLBindCol(hstmt, 1, SQL_C_LONG, &mapcode, sizeof(mapcode), &mapcodeLen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &npccode, sizeof(npccode), &npccodeLen);
+
+		retCode = SQLFetch(hstmt);
+
+		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
+		{
+			m_MapEdge.Insert(mapcode, npccode);
+
+			retCode = SQLFetch(hstmt);
+		}
+
+		ReleaseHandle(hstmt);
+
+		return;
+	}
+
+	void MakeMapMonsterInfo()
+	{
+		// T(MAPMONSTERINFO) : [MAPCODE][MONSTERCODE]
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::MakeMapMonsterInfo : 핸들 발급 실패\n";
+			return;
+		}
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT MAPCODE, MONSTERCODE "
+			L"FROM MAPMONSTERINFO", SQL_NTS);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			std::cerr << "Database::MakeMapMonsterInfo : Failed to Execute\n";
+			return;
+		}
+
+		int mapcode;
+		SQLLEN mapcodeLen;
+		int monstercode;
+		SQLLEN monstercodeLen;
+
+		SQLBindCol(hstmt, 1, SQL_C_LONG, &mapcode, sizeof(mapcode), &mapcodeLen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &monstercode, sizeof(monstercode), &monstercodeLen);
+
+		retCode = SQLFetch(hstmt);
+
+		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
+		{
+			m_MapEdge.Insert(mapcode, monstercode);
+
+			retCode = SQLFetch(hstmt);
+		}
+
+		ReleaseHandle(hstmt);
+
+		return;
+	}
+
 	RedisManager m_RedisManager;
 	JsonMaker m_JsonMaker;
 	Shop m_Shop;
 	MapEdge m_MapEdge;
+	MapInfo m_MapInfo;
 
 	std::vector<std::string> m_ReservedWord;
 	std::unique_ptr<MSSQL::ConnectionPool> m_Pool;

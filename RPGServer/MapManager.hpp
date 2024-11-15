@@ -30,7 +30,7 @@ public:
 		m_ItemObjectPool.reset();
 	}
 
-	RPG::Map* GetMap(int mapcode_)
+	RPG::Map* GetMap(const int mapcode_)
 	{
 		if (mapcode_ < 1)
 		{
@@ -49,21 +49,27 @@ public:
 
 	// 여기까지는 function을 참조로 보내도 된다.
 	// 큐에 넣은 이후 람다는 소멸하기 때문에 큐 내부에서 받을때는 복사로 받는다.
-	void pushJob(const time_t elaspedTime_, const std::function<void()>& job_)
+	void pushJob(const long long elaspedTimeSec_, const std::function<void()>& job_)
 	{
-		time_t currentTime = time(NULL);
+		std::chrono::steady_clock::time_point ReqTime = std::chrono::steady_clock::now() + std::chrono::seconds(elaspedTimeSec_);
 
-		ToDoQueue.push(currentTime + elaspedTime_, job_);
+		ToDoQueue.push(ReqTime, job_);
 
 		return;
 	}
 
 	void ReleaseItemObject(ItemObject* pItem_)
 	{
+		if (pItem_ == nullptr)
+		{
+			return;
+		}
+
+		pItem_->Clear();
+
 		m_ItemObjectPool->Deallocate(pItem_);
 		return;
 	}
-
 
 	std::function<PacketData*()> AllocatePacket;
 	std::function<void(PacketData*)> DeallocatePacket;
@@ -77,7 +83,7 @@ private:
 		pMap->DeallocatePacket = DeallocatePacket;
 		pMap->SendMsgFunc = SendMsgFunc;
 
-		auto reserveJobFunc = [this](const time_t elaspedTime, const std::function<void()>& job) {pushJob(elaspedTime, job); };
+		auto reserveJobFunc = [this](const long long elaspedTimeSec, const std::function<void()>& job) {pushJob(elaspedTimeSec, job); };
 
 		pMap->ReserveJob = reserveJobFunc;
 

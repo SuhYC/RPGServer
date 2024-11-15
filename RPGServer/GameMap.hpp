@@ -17,16 +17,18 @@ namespace RPG
 {
 	const int MAX_MONSTER_COUNT_ON_MAP = 10;
 	const int ITEM_LIFE_SEC = 60;
+	const int ITEM_OWNERSHIP_PERIOD = 20;
+	const int SPAWN_INTERVAL_SEC = 7;
 
 	class Map
 	{
 	public:
 		Map(const int mapcode_) : m_mapcode(mapcode_) {};
 
-		void Init(const int mapcode_)
+		void Init(const int monstercode_, const int monstercount_)
 		{
-			m_mapcode = mapcode_;
 			m_itemcnt = 0;
+			m_NextSpawnTime = std::chrono::steady_clock::now() + std::chrono::seconds(SPAWN_INTERVAL_SEC);
 		}
 
 		void UserExit(const int connectionIdx_)
@@ -50,9 +52,9 @@ namespace RPG
 				return false;
 			}
 
-			Monster* target = m_Monsters[Monsteridx_];
+			Monster& target = m_Monsters[Monsteridx_];
 
-			if (target == nullptr)
+			if (target.IsAlive() == false)
 			{
 				return false;
 			}
@@ -65,15 +67,15 @@ namespace RPG
 			}
 
 			int usercode = itr->second->GetUserCode();
-			int iRet = target->GetDamaged(usercode, damage_);
+			int iRet = target.GetDamaged(usercode, damage_);
 
-			// 데미지 준거 전파
+			// --데미지 준거 전파
 
 			// Heaviest Dealed Dealer
 			if (iRet != 0)
 			{
 				// CreateObject ...
-				// 몬스터 사망 전파, 오브젝트 생성 전파
+				// --몬스터 사망 전파, 오브젝트 생성 전파
 				return true;
 			}
 			return false;
@@ -84,7 +86,9 @@ namespace RPG
 			std::lock_guard<std::mutex> guard(m_itemMutex);
 			ItemObject* obj = AllocateItemObject();
 
-			obj->Init(itemcode_, count_, owner_, position_);
+			time_t now = time(NULL);
+
+			obj->Init(itemcode_, count_, owner_, position_, now + ITEM_OWNERSHIP_PERIOD);
 			unsigned int cnt = m_itemcnt++;
 			m_itemObjects.emplace(cnt, obj);
 
@@ -95,15 +99,26 @@ namespace RPG
 			return;
 		}
 
-		ItemObject* PopObject(const unsigned int objectNo_)
+
+		// usercode : 0 인 경우 아이템 소멸 요청이기 때문에 그냥 준다.
+		ItemObject* PopObject(const unsigned int objectNo_, const int usercode_ = 0)
 		{
 			std::lock_guard<std::mutex> guard(m_itemMutex);
 			auto itr = m_itemObjects.find(objectNo_);
 			if (itr != m_itemObjects.end())
 			{
 				ItemObject* ret = itr->second;
-				m_itemObjects.erase(objectNo_);
-				return ret;
+
+				if (ret == nullptr)
+				{
+					return nullptr;
+				}
+
+				if (ret->CanGet(usercode_))
+				{
+					m_itemObjects.erase(objectNo_);
+					return ret;
+				}
 			}
 			return nullptr;
 		}
@@ -122,6 +137,9 @@ namespace RPG
 			return;
 		}
 
+		// 생성 직후 초기화가 필요한지 확인하는 함수.
+		bool IsNew() { return std::chrono::duration_cast<std::chrono::seconds>(m_NextSpawnTime.time_since_epoch()).count() == 0; }
+
 		//----- func pointer
 		std::function<PacketData* ()> AllocatePacket;
 		std::function<void(PacketData*)> DeallocatePacket;
@@ -132,7 +150,7 @@ namespace RPG
 		std::function<void(ItemObject*)> DeallocateItemObject;
 
 		// 특정 시간이 경과된 후 특정 함수를 실행해달라고 예약. (a,b) : a초 후에 b함수를 실행
-		std::function<void(const time_t, const std::function<void()>&)> ReserveJob; 
+		std::function<void(const long long, const std::function<void()>&)> ReserveJob; 
 
 	private:
 		// 메시지 주체에 대한 정보를 해당 함수에서 작성할지 고민 필요
@@ -175,7 +193,7 @@ namespace RPG
 		std::map<int, User*> users; // connidx, userData 
 		std::map<unsigned int, ItemObject*> m_itemObjects;
 
-		Monster* m_Monsters[MAX_MONSTER_COUNT_ON_MAP];
+		Monster m_Monsters[MAX_MONSTER_COUNT_ON_MAP];
 
 		// C++14에서 읽쓰락을 쓰긴 좀 그러니..
 		std::mutex m_userMutex;
@@ -183,5 +201,6 @@ namespace RPG
 
 		unsigned int m_itemcnt = 0;
 		int m_mapcode;
+		std::chrono::steady_clock::time_point m_NextSpawnTime;
 	};
 }

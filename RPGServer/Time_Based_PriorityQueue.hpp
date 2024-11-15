@@ -24,7 +24,7 @@ public:
 		}
 	}
 
-	void push(time_t reserved_time_, Func job_)
+	void push(std::chrono::steady_clock::time_point& reserved_time_, Func job_)
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 		q.emplace(reserved_time_, job_);
@@ -33,7 +33,7 @@ public:
 private:
 	struct cmp
 	{
-		bool operator()(const std::pair<time_t, Func>& p1, const std::pair<time_t, Func>& p2)
+		bool operator()(const std::pair<std::chrono::steady_clock::time_point, Func>& p1, const std::pair<std::chrono::steady_clock::time_point, Func>& p2)
 		{
 			return p1.first > p2.first;
 		}
@@ -44,7 +44,7 @@ private:
 		// top을 조회하는 스레드는 하나만 둘 것이기 때문에 lock을 거는 위치는 후순위.
 		while (m_isRun)
 		{
-			time_t currentTime = time(NULL);
+			std::chrono::steady_clock::time_point currentTime = std::chrono::steady_clock::now();
 			if (q.empty() || q.top().first > currentTime)
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -62,5 +62,5 @@ private:
 
 	bool m_isRun;
 
-	std::priority_queue<std::pair<time_t, Func>, std::vector<std::pair<time_t, Func>>, cmp> q;
+	std::priority_queue<std::pair<std::chrono::steady_clock::time_point, Func>, std::vector<std::pair<std::chrono::steady_clock::time_point, Func>>, cmp> q;
 };

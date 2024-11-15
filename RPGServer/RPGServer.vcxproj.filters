@@ -107,5 +107,14 @@
     <ClInclude Include="Item.hpp">
       <Filter>헤더 파일\Feat</Filter>
     </ClInclude>
+    <ClInclude Include="MapEdge.hpp">
+      <Filter>헤더 파일\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="Shop.hpp">
+      <Filter>헤더 파일\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="MapInfo.hpp">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
