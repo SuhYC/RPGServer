@@ -20,9 +20,8 @@
 #include "CharInfo.hpp"
 #include "MemoryPool.hpp"
 #include <unordered_map>
-#include "Shop.hpp"
-#include "MapEdge.hpp"
-#include "MapInfo.hpp"
+#include "UMapWrapper.hpp"
+#include "MonsterInfo.hpp"
 
 const bool DB_DEBUG = true;
 const int CLIENT_NOT_CERTIFIED = 0;
@@ -528,12 +527,12 @@ public:
 	// return -1 : 해당하는 아이템 정보 없음.
 	int GetPrice(const int itemcode_) noexcept
 	{
-		return m_Shop.GetPrice(itemcode_);
+		return m_PriceTable.Get(itemcode_);
 	}
 
 	bool FindSalesList(const int npcCode_, const int itemCode_)
 	{
-		return m_Shop.FindSalesList(npcCode_, itemCode_);
+		return m_SalesList.Find(npcCode_, itemCode_);
 	}
 
 	bool FindMapEdge(const int fromMapCode_, const int toMapCode_)
@@ -543,21 +542,7 @@ public:
 
 	bool FindNPCInfo(const int mapCode_, const int NPCCode_)
 	{
-		return m_MapInfo.FindMapNPCInfo(mapCode_, NPCCode_);
-	}
-
-	bool FindMonsterInfo(const int mapCode_, const int monsterCode_)
-	{
-		return m_MapInfo.FindMapMonsterInfo(mapCode_, monsterCode_);
-	}
-
-	// 처음 맵에 들어가는 인원이 해당 함수로 몬스터를 소환해주어야한다.
-	// 맵에 소환되는 몬스터 정보를 조금 다른 식으로 바꿔야할것 같다.
-	// 1. 몬스터 종류
-	// 2. 소환 위치
-	std::pair<std::unordered_multimap<int, int>::iterator, std::unordered_multimap<int, int>::iterator>&& GetMonsterInfo(const int mapcode_)
-	{
-		return m_MapInfo.Get_Map_MonsterInfo(mapcode_);
+		return m_MapNPCInfo.Find(mapCode_, NPCCode_);
 	}
 
 	// 뿌려지는 아이템의 코드만 전달한다.
@@ -579,6 +564,124 @@ public:
 		}
 
 		return stItem.itemcode;
+	}
+
+	// 지연쓰기를 써보고 싶긴 한데 지연쓰기는 별도의 서버를 하나 구성해야겠다.. (Paging Dirty bit느낌으로 하면 될듯?)
+	// 일단 바로바로 반영하는 것으로 작성.
+	// 연결을 끊을 때마다 기록하는것도 고려해볼수 있을지도..? (서버가 죽으면 어떡하지..?)
+	bool UpdateCharInfo(CharInfo* pInfo_)
+	{
+		if (pInfo_ == nullptr)
+		{
+			return false;
+		}
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		SQLRETURN retCode = SQLPrepare(hstmt, (SQLWCHAR*)
+			L"UPDATE CHARINFO SET"
+			L"LV = ?, EXPERIENCE = ?, STATPOINT = ?, HEALTHPOINT = ?, MANAPOINT = ?, "
+			L"STRENGTH = ?, DEXTERITY = ?, INTELLIGENCE = ?, MENTALITY = ?, GOLD = ?, "
+			L"LASTMAPCODE = ? "
+			L"WHERE CHARNO = ?;", SQL_NTS);
+
+		if (retCode != SQL_SUCCESS)
+		{
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Level, 0, nullptr);
+		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Experience, 0, nullptr);
+		SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->StatPoint, 0, nullptr);
+		SQLBindParameter(hstmt, 4, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->HealthPoint, 0, nullptr);
+		SQLBindParameter(hstmt, 5, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->ManaPoint, 0, nullptr);
+		SQLBindParameter(hstmt, 6, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Strength, 0, nullptr);
+		SQLBindParameter(hstmt, 7, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Dexterity, 0, nullptr);
+		SQLBindParameter(hstmt, 8, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Intelligence, 0, nullptr);
+		SQLBindParameter(hstmt, 9, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Mentality, 0, nullptr);
+		SQLBindParameter(hstmt, 10, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Gold, 0, nullptr);
+		SQLBindParameter(hstmt, 11, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->LastMapCode, 0, nullptr);
+		SQLBindParameter(hstmt, 12, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->CharNo, 0, nullptr);
+
+		retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::cerr << "Database::GetCharInfo : Failed to Execute\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		ReleaseHandle(hstmt);
+
+		return true;
+	}
+
+	// GameMap의 초기화에만 사용되므로 DB를 바로 조회해도 될것같다.
+	// 내부에서 몬스터 드랍정보도 한번에 가져오면 좋을듯
+	std::vector<MonsterSpawnInfo> GetMonsterSpawnInfo(const int mapcode_)
+	{
+		// T(SPAWNINFO) [MAPCODE] [MONSTERCODE] [POSX] [POSY]
+		// T(MONSTERINFO)[MONSTERCODE][MAXHEALTH][EXPERIENCE][DROPGOLD]
+		// T(DROPINFO) [MONSTERCODE] [ITEMCODE] [RATIO]
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::GetMonsterSpawnInfo : 핸들 발급 실패.\n";
+			return std::vector<MonsterSpawnInfo>();
+		}
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT S.MONSTERCODE, S.POSX, S.POSY, M.MAXHEALTH "
+			L"FROM " 
+			L"	(SELECT MONSTERCODE, POSX, POSY "
+			L"	FROM SPAWNINFO "
+			L"	WHERE MAPCODE = ?) AS S "
+			L"INNER JOIN MONSTERINFO AS M ON S.MONSTERCODE = M.MONSTERCODE ", SQL_NTS);
+
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			std::cerr << "Database::MakePriceTable : Failed to Execute\n";
+			return std::vector<MonsterSpawnInfo>();
+		}
+
+		std::vector<MonsterSpawnInfo> ret;
+
+		int monstercode;
+		Vector2 pos;
+		int maxhealth;
+
+		SQLLEN mcodelen;
+		SQLLEN posxlen;
+		SQLLEN posylen;
+		SQLLEN mhlen;
+
+		SQLBindCol(hstmt, 1, SQL_C_LONG, &monstercode, sizeof(monstercode), &mcodelen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &pos.x, sizeof(pos.x), &posxlen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &pos.y, sizeof(pos.y), &posylen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &maxhealth, sizeof(maxhealth), &mhlen);
+
+		retCode = SQLFetch(hstmt);
+
+		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
+		{
+			MakeMonsterInfo(monstercode);
+			ret.emplace_back(monstercode, maxhealth, pos);
+
+			retCode = SQLFetch(hstmt);
+		}
+
+		ReleaseHandle(hstmt);
+
+		return ret;
 	}
 
 private:
@@ -779,7 +882,7 @@ private:
 
 		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
 		{
-			m_Shop.InsertPrice(itemcode, purchasePrice);
+			m_PriceTable.Insert(itemcode, purchasePrice);
 
 			retCode = SQLFetch(hstmt);
 		}
@@ -827,7 +930,7 @@ private:
 
 		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
 		{
-			m_Shop.InsertSalesList(npccode, itemcode);
+			m_SalesList.Insert(npccode, itemcode);
 
 			retCode = SQLFetch(hstmt);
 		}
@@ -981,11 +1084,30 @@ private:
 		return;
 	}
 
+	// 사용가능성이 있는 몬스터에 대한 정보를 가져와 기록한다.
+	void MakeMonsterInfo(const int monsterCode_)
+	{
+		// if(이미 있음) return;
+		// 
+		// DB조회
+	}
+
 	RedisManager m_RedisManager;
 	JsonMaker m_JsonMaker;
-	Shop m_Shop;
-	MapEdge m_MapEdge;
-	MapInfo m_MapInfo;
+
+	// [itemcode][price]
+	UMapWrapper<int, int> m_PriceTable;
+
+	// [npccode][itemcode]
+	UMultiMapWrapper<int, int> m_SalesList;
+
+	// [mapcode][mapcode]
+	// 첫번째 파라미터의 맵으로부터 두번째파라미터의 맵으로 이동 가능함을 표시.
+	UMultiMapWrapper<int, int> m_MapEdge;
+
+	// [mapcode][npccode]
+	// 해당 맵에 해당 npc가 존재함을 표시.
+	UMultiMapWrapper<int, int> m_MapNPCInfo;
 
 	std::vector<std::string> m_ReservedWord;
 	std::unique_ptr<MSSQL::ConnectionPool> m_Pool;

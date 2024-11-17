@@ -58,11 +58,12 @@ public:
 		return;
 	}
 
-	void Clear()
+	// CharInfo 객체를 반환한다. 해당 정보를 DB에 기록하고 반환할것.
+	CharInfo* Clear()
 	{
 		if (m_IsConnected == false)
 		{
-			return;
+			return nullptr;
 		}
 
 		m_IsConnected = false;
@@ -72,11 +73,9 @@ public:
 		m_charcode = 0;
 		m_ip.clear();
 
-		if (m_pCharInfo != nullptr)
-		{
-			ReleaseInfo(m_pCharInfo);
-			m_pCharInfo = nullptr;
-		}
+		CharInfo* ret = m_pCharInfo;
+		m_pCharInfo = nullptr;
+		return ret;
 	}
 
 	// 서버 가동 중단 등으로 메모리를 풀에 반납하지 않고 해제하는 함수이다.

@@ -22,9 +22,10 @@ public:
 		}
 	}
 
-	void ReleaseUser(const int connectionIdx_)
+	// 리턴값을 null체크 하고 반환할것.
+	CharInfo* ReleaseUser(const int connectionIdx_)
 	{
-		users[connectionIdx_]->Clear();
+		return users[connectionIdx_]->Clear();
 	}
 
 	void Clear()

@@ -32,14 +32,6 @@ public:
 	void InsertPrice(const int itemcode_, const int price_)
 	{
 		auto pair = m_PriceTable.emplace(itemcode_, price_);
-
-		// 이미 해당 아이템코드로 삽입된 데이터가 있음.
-		if (pair.second == false)
-		{
-			auto itr = m_PriceTable.find(itemcode_);
-
-			std::cerr << "DB::MakePriceTable : Failed to Emplace on map : (" << itemcode_ << ", " << itr->second << ", " << price_ << ")\n";
-		}
 		return;
 	}
 

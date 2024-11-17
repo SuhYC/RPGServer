@@ -38,7 +38,7 @@ public:
 			m_bIsAlive = false;
 			itr->second += m_HealthPoint;
 
-			int maxDamage = itr->second;
+			unsigned int maxDamage = itr->second;
 			int maxDamageUser = usercode_;
 
 			for (auto& i : m_CumulativeDamage)

@@ -8,6 +8,7 @@
 #include "User.hpp"
 #include <vector>
 #include "Monster.hpp"
+#include "Vector.hpp"
 
 // 맵에 너무 많은 아이템이 있으면 안되니 일정 시간이 지난 후에 사라지게 만들어야함
 // Priority Queue를 이용해 <time_t, func>으로 pair를 구성하여 time_t에 대해 오름차순으로 정렬하고
@@ -19,6 +20,7 @@ namespace RPG
 	const int ITEM_LIFE_SEC = 60;
 	const int ITEM_OWNERSHIP_PERIOD = 20;
 	const int SPAWN_INTERVAL_SEC = 7;
+	const float DISTANCE_LIMIT_GET_OBJECT = 5.0f;
 
 	class Map
 	{
@@ -101,7 +103,8 @@ namespace RPG
 
 
 		// usercode : 0 인 경우 아이템 소멸 요청이기 때문에 그냥 준다.
-		ItemObject* PopObject(const unsigned int objectNo_, const int usercode_ = 0)
+		// 유저의 습득 요청의 경우 위치정보도 같이 입력한다.
+		ItemObject* PopObject(const unsigned int objectNo_, const int usercode_ = 0, const Vector2& position_ = Vector2())
 		{
 			std::lock_guard<std::mutex> guard(m_itemMutex);
 			auto itr = m_itemObjects.find(objectNo_);
@@ -110,6 +113,12 @@ namespace RPG
 				ItemObject* ret = itr->second;
 
 				if (ret == nullptr)
+				{
+					return nullptr;
+				}
+
+				// 거리가 먼 경우
+				if (usercode_ != 0 && position_.SquaredDistance(ret->GetPosition()) > DISTANCE_LIMIT_GET_OBJECT)
 				{
 					return nullptr;
 				}

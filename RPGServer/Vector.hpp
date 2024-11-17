@@ -16,14 +16,14 @@ public:
 		y = y_;
 	}
 
-	Vector2& operator=(Vector2& other_)
+	Vector2& operator=(const Vector2& other_)
 	{
 		x = other_.x;
 		y = other_.y;
 
 		return *this;
 	}
-	Vector2& operator=(Vector2&& other_) noexcept
+	Vector2& operator=(const Vector2&& other_) noexcept
 	{
 		x = other_.x;
 		y = other_.y;

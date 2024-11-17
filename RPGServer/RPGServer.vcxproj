@@ -153,6 +153,7 @@
     <ClInclude Include="MapManager.hpp" />
     <ClInclude Include="MemoryPool.hpp" />
     <ClInclude Include="Monster.hpp" />
+    <ClInclude Include="MonsterInfo.hpp" />
     <ClInclude Include="ODBCConnectionPool.hpp" />
     <ClInclude Include="PacketData.hpp" />
     <ClInclude Include="PacketPool.hpp" />
@@ -163,6 +164,7 @@
     <ClInclude Include="RPGServer.hpp" />
     <ClInclude Include="Shop.hpp" />
     <ClInclude Include="Time_Based_PriorityQueue.hpp" />
+    <ClInclude Include="UMapWrapper.hpp" />
     <ClInclude Include="User.hpp" />
     <ClInclude Include="UserManager.hpp" />
     <ClInclude Include="Vector.hpp" />

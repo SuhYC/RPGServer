@@ -29,7 +29,6 @@
 * map-map정보를 기록하여야함. -> 해당 맵에서 다음 맵으로 이동할 수 있다는 정보
 */
 
-const float DISTANCE_LIMIT_GET_OBJECT = 5.0f;
 
 class ReqHandler
 {
@@ -110,7 +109,14 @@ public:
 			m_DB.LogOut(usercode);
 		}
 
-		m_UserManager.ReleaseUser(connidx_);
+		CharInfo* pInfo = m_UserManager.ReleaseUser(connidx_);
+
+		// 변동사항을 기록하고 객체를 반환한다.
+		if (pInfo != nullptr)
+		{
+			m_DB.UpdateCharInfo(pInfo);
+			m_DB.ReleaseObject(pInfo);
+		}
 
 		return;
 	}
@@ -365,15 +371,8 @@ private:
 		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
 		ItemObject* itemobj = pMap->PopObject(stParam.objectidx, pUser->GetCharCode());
 
-		// 이미 습득하였거나 사라졌거나 습득권한이 없는 아이템
+		// 이미 습득하였거나 사라졌거나 거리가 멀거나 습득권한이 없는 아이템
 		if (itemobj == nullptr)
-		{
-			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
-		}
-
-		Vector2 position = itemobj->GetPosition();
-
-		if (position.SquaredDistance(pUser->GetPosition()) <= DISTANCE_LIMIT_GET_OBJECT)
 		{
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
 		}

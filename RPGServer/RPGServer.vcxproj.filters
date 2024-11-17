@@ -114,6 +114,12 @@
       <Filter>헤더 파일\DB</Filter>
     </ClInclude>
     <ClInclude Include="MapInfo.hpp">
+      <Filter>헤더 파일\Feat</Filter>
+    </ClInclude>
+    <ClInclude Include="MonsterInfo.hpp">
+      <Filter>헤더 파일\Feat</Filter>
+    </ClInclude>
+    <ClInclude Include="UMapWrapper.hpp">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

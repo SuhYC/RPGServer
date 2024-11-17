@@ -85,7 +85,7 @@ public:
 		{
 			msg = new char[dataSize_ + 1];
 		}
-		catch (const std::bad_alloc& e)
+		catch (const std::bad_alloc&)
 		{
 			std::cerr << "PacketData::Init : 메모리 부족\n";
 			return;
@@ -107,7 +107,7 @@ public:
 		{
 			msg = new char[strData_.size() + 1];
 		}
-		catch (const std::bad_alloc& e)
+		catch (const std::bad_alloc&)
 		{
 			std::cerr << "ReqHandler::MakePacket : 메모리 부족\n";
 			return;
