@@ -3,6 +3,7 @@
 #include "Vector.hpp"
 
 // 필드에 뿌려진 아이템에 대한 정보이다.
+// 1번 아이템을 Gold로 표기해야겠다. (0번 아이템은 빈칸)
 class ItemObject
 {
 public:

@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include "UMapWrapper.hpp"
 #include "MonsterInfo.hpp"
+#include "MonsterDropInfo.hpp"
 
 const bool DB_DEBUG = true;
 const int CLIENT_NOT_CERTIFIED = 0;
@@ -50,7 +51,6 @@ public:
 		MakeSalesList();
 		MakeMapEdgeList();
 		MakeMapNPCInfo();
-		MakeMapMonsterInfo();
 	}
 
 	virtual ~Database()
@@ -298,7 +298,7 @@ public:
 		}
 
 		SQLLEN len;
-		SQLGetData(hstmt, 1, SQL_C_WCHAR, pCharInfo->CharName, sizeof(pCharInfo->CharName) / sizeof(pCharInfo->CharName[0]), &len);
+		SQLGetData(hstmt, 1, SQL_C_CHAR, pCharInfo->CharName, sizeof(pCharInfo->CharName) / sizeof(pCharInfo->CharName[0]), &len);
 		SQLGetData(hstmt, 2, SQL_C_LONG, &(pCharInfo->Level), 0, &len);
 		SQLGetData(hstmt, 3, SQL_C_LONG, &(pCharInfo->Experience), 0, &len);
 		SQLGetData(hstmt, 4, SQL_C_LONG, &(pCharInfo->StatPoint), 0, &len);
@@ -382,7 +382,7 @@ public:
 		}
 
 		SQLLEN len;
-		SQLGetData(hstmt, 1, SQL_C_WCHAR, ret->CharName, sizeof(ret->CharName) / sizeof(ret->CharName[0]), &len);
+		SQLGetData(hstmt, 1, SQL_C_CHAR, ret->CharName, sizeof(ret->CharName) / sizeof(ret->CharName[0]), &len);
 		SQLGetData(hstmt, 2, SQL_C_LONG, &(ret->Level), 0, &len);
 		SQLGetData(hstmt, 3, SQL_C_LONG, &(ret->Experience), 0, &len);
 		SQLGetData(hstmt, 4, SQL_C_LONG, &(ret->StatPoint), 0, &len);
@@ -545,6 +545,7 @@ public:
 		return m_MapNPCInfo.Find(mapCode_, NPCCode_);
 	}
 
+	// 유저가 인벤토리의 아이템을 뿌리는 경우.
 	// 뿌려지는 아이템의 코드만 전달한다.
 	// return 0 : 실패함, return n : 코드가 n인 아이템을 드랍하는데 성공했다.
 	int DropItem(const int charCode_, const int slotIdx_, const int count_)
@@ -564,6 +565,21 @@ public:
 		}
 
 		return stItem.itemcode;
+	}
+
+	// 몬스터코드에 맞는 드랍정보를 모두 가져온다.
+	std::vector<MonsterDropInfo> GetMonsterDropInfo(const int monsterCode_)
+	{
+		std::vector<MonsterDropInfo> ret;
+
+		auto range = m_DropInfo.Get(monsterCode_);
+
+		for (auto& itr = range.first; itr != range.second; itr++)
+		{
+			ret.push_back(MonsterDropInfo(itr->second));
+		}
+
+		return ret;
 	}
 
 	// 지연쓰기를 써보고 싶긴 한데 지연쓰기는 별도의 서버를 하나 구성해야겠다.. (Paging Dirty bit느낌으로 하면 될듯?)
@@ -643,13 +659,18 @@ public:
 			L"	WHERE MAPCODE = ?) AS S "
 			L"INNER JOIN MONSTERINFO AS M ON S.MONSTERCODE = M.MONSTERCODE ", SQL_NTS);
 
+		int param = mapcode_;
+		SQLLEN paramlen;
+
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &param, 0, &paramlen);
+
 		SQLRETURN retCode = SQLExecute(hstmt);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
 			ReleaseHandle(hstmt);
-			std::cerr << "Database::MakePriceTable : Failed to Execute\n";
+			std::cerr << "Database::GetMonsterSpawnInfo : Failed to Execute\n";
 			return std::vector<MonsterSpawnInfo>();
 		}
 
@@ -673,7 +694,7 @@ public:
 
 		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
 		{
-			MakeMonsterInfo(monstercode);
+			MakeMonsterDropTable(monstercode);
 			ret.emplace_back(monstercode, maxhealth, pos);
 
 			retCode = SQLFetch(hstmt);
@@ -682,6 +703,93 @@ public:
 		ReleaseHandle(hstmt);
 
 		return ret;
+	}
+
+	bool ReserveNickname(std::string& nickname_)
+	{
+		bool bRet = m_RedisManager.ReserveNickname(nickname_);
+
+		// Redis에 예약정보 남기기 실패 (다른 유저가 이미 예약중)
+		if (bRet == false)
+		{
+			return false;
+		}
+
+		// 유효한 닉네임이 아님.
+		if (!CheckNicknameIsValid(nickname_))
+		{
+			m_RedisManager.CancelReserveNickname(nickname_);
+			return false;
+		}
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			m_RedisManager.CancelReserveNickname(nickname_);
+			return false;
+		}
+
+		SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT 1 AS RES "
+			L"FROM CHARINFO "
+			L"WHERE CHARNAME = ? ", SQL_NTS);
+
+		SQLLEN Length = nickname_.length();
+
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)nickname_.c_str(), 0, &Length);
+		
+		SQLRETURN retCode = SQLExecute(hstmt);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			ReleaseHandle(hstmt);
+			m_RedisManager.CancelReserveNickname(nickname_);
+			std::cerr << "Database::SIGNUP : Failed to Execute\n";
+			return false;
+		}
+
+		// 데이터베이스에서 해당 닉네임이 검색됨
+		if (SQLFetch(hstmt) == SQL_SUCCESS)
+		{
+			ReleaseHandle(hstmt);
+			m_RedisManager.CancelReserveNickname(nickname_);
+			return false;
+		}
+		// 검색된 닉네임이 없음.
+		else
+		{
+			ReleaseHandle(hstmt);
+			return true;
+		}
+	}
+
+	// ReserveNickname이 성공한 유저인지 확인하고 호출할 것.
+	bool CancelReserveNickname(std::string& nickname_)
+	{
+		return m_RedisManager.CancelReserveNickname(nickname_);
+	}
+
+	bool CreateCharactor(const int usercode_, std::string& nickname_, const int startMapcode_)
+	{
+		if (!InsertCharInfo(nickname_, startMapcode_))
+		{
+			return false;
+		}
+		int iRet = GetCharNo(nickname_);
+
+		if (iRet <= 0)
+		{
+			return false;
+		}
+
+		if (!InsertCharList(usercode_, iRet))
+		{
+			return false;
+		}
+
+		return true;
 	}
 
 private:
@@ -721,6 +829,28 @@ private:
 				(pw_[i] < 'a' && pw_[i] > 'Z') ||
 				(pw_[i] < 'A' && pw_[i] > '9') ||
 				pw_[i] < '0')
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool CheckNicknameIsValid(const std::string& nickname)
+	{
+		if (nickname.length() > 10 || nickname.length() < 3)
+		{
+			return false;
+		}
+
+		// 영문 대소문자, 숫자만 허용
+		for (size_t i = 0; i < nickname.length(); i++)
+		{
+			if (nickname[i] > 'z' ||
+				(nickname[i] < 'a' && nickname[i] > 'Z') ||
+				(nickname[i] < 'A' && nickname[i] > '9') ||
+				nickname[i] < '0')
 			{
 				return false;
 			}
@@ -1036,21 +1166,184 @@ private:
 		return;
 	}
 
-	void MakeMapMonsterInfo()
+	bool InsertCharInfo(std::string& charname_, const int startMapcode_)
 	{
-		// T(MAPMONSTERINFO) : [MAPCODE][MONSTERCODE]
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		SQLRETURN retcode = SQLPrepare(hstmt, (SQLWCHAR*)
+			L"INSERT INTO CHARINFO (CHARNAME, LV, EXPERIENCE, STATPOINT, "
+			L"HEALTHPOINT, MANAPOINT, STRENGTH, DEXTERITY, "
+			L"INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE) "
+			L"VALUES (?, 1, 0, 0, 100, 100, 4, 4, 4, 4, 0, ?) ", SQL_NTS);
+
+		if (retcode != SQL_SUCCESS)
+		{
+			std::cerr << "DB::InsertCharInfo : Error Preparing SQL stmt\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		if (SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR,
+			0, 0, (SQLCHAR*)charname_.c_str(), 0, nullptr) != SQL_SUCCESS ||
+			SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER,
+				0, 0, (SQLPOINTER)&startMapcode_, 0, nullptr) != SQL_SUCCESS)
+		{
+			std::cerr << "DB::InsertCharInfo : Error Binding Parameters\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		retcode = SQLExecute(hstmt);
+		ReleaseHandle(hstmt);
+
+		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::cerr << "DB::InsertCharInfo : Failed to Execute\n";
+			return false;
+		}
+
+		return true;
+	}
+
+	int GetCharNo(std::string& charname_)
+	{
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			return -1;
+		}
+
+		SQLRETURN retcode = SQLPrepare(hstmt, (SQLWCHAR*)
+			L"SELECT CHARNO "
+			L"FROM CHARINFO "
+			L"WHERE CHARNAME = ? ", SQL_NTS);
+
+		if (retcode != SQL_SUCCESS)
+		{
+			std::cerr << "DB::InsertCharInfo : Error Preparing SQL stmt\n";
+			ReleaseHandle(hstmt);
+			return -1;
+		}
+
+		if (SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR,
+			0, 0, (SQLCHAR*)charname_.c_str(), 0, nullptr) != SQL_SUCCESS)
+		{
+			std::cerr << "DB::InsertCharInfo : Error Binding Parameters\n";
+			ReleaseHandle(hstmt);
+			return -1;
+		}
+
+		retcode = SQLExecute(hstmt);
+
+		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::cerr << "DB::InsertCharInfo : Failed to Execute\n";
+			ReleaseHandle(hstmt);
+			return -1;
+		}
+
+		int ret = 0;
+		SQLLEN len;
+		retcode = SQLBindCol(hstmt, 1, SQL_C_LONG, &ret, sizeof(ret), &len);
+
+		if (retcode != SQL_SUCCESS)
+		{
+			std::cerr << "DB::InsertCharInfo : Failed to BindCol\n";
+			ReleaseHandle(hstmt);
+			return -1;
+		}
+
+		retcode = SQLFetch(hstmt);
+		if (retcode != SQL_SUCCESS)
+		{
+			std::cerr << "DB::InsertCharInfo : Failed to Fetch\n";
+			ReleaseHandle(hstmt);
+			return -1;
+		}
+
+		ReleaseHandle(hstmt);
+		return ret;
+	}
+
+	bool InsertCharList(const int usercode_, const int charcode_)
+	{
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		SQLRETURN retcode = SQLPrepare(hstmt, (SQLWCHAR*)
+			L"INSERT INTO CHARLIST (USERNO, CHARNO) VALUES (?, ?) ", SQL_NTS);
+
+		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::cerr << "DB::InsertCharList : Error Preparing SQL stmt\n";
+			ReleaseHandle(hstmt);
+			return -1;
+		}
+
+
+		if (SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER,
+			0, 0, (SQLPOINTER)&usercode_, 0, nullptr) != SQL_SUCCESS ||
+			SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER,
+				0, 0, (SQLPOINTER)&charcode_, 0, nullptr) != SQL_SUCCESS)
+		{
+			std::cerr << "DB::InsertCharList : Error Binding Parameters\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		retcode = SQLExecute(hstmt);
+		ReleaseHandle(hstmt);
+
+		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::cerr << "DB::InsertCharList : Failed to Execute\n";
+			return false;
+		}
+
+		return true;
+	}
+
+	// 사용가능성이 있는 몬스터에 대한 드랍정보를 가져와 기록한다.
+	// 몬스터가 정말 아무것도 드랍하지 않더라도 DB에 Gold를 드랍할 확률을 적는다. -> 해당 몬스터 정보가 있는지 판단하는데 쓸 것.
+	void MakeMonsterDropTable(const int monsterCode_)
+	{
+		// T(DROPINFO) [MONSTERCODE] [ITEMCODE] [NUM] [DEN]
+		// NUM / DEN = 드랍확률
+
+		auto range = m_DropInfo.Get(monsterCode_);
+		// 정보 있음 (begin() != end())
+		if (range.first != range.second)
+		{
+			return;
+		}
 
 		HANDLE hstmt = m_Pool->Allocate();
 
 		if (hstmt == INVALID_HANDLE_VALUE)
 		{
-			std::cerr << "DB::MakeMapMonsterInfo : 핸들 발급 실패\n";
+			std::cerr << "DB::MakeMonsterDropTable : 핸들 발급 실패\n";
 			return;
 		}
 
 		SQLPrepare(hstmt, (SQLWCHAR*)
-			L"SELECT MAPCODE, MONSTERCODE "
-			L"FROM MAPMONSTERINFO", SQL_NTS);
+			L"SELECT ITEMCODE, NUM, DEN "
+			L"FROM DROPINFO "
+			L"WHERE MONSTERCODE = ? ", SQL_NTS);
+
+		int param = monsterCode_;
+		SQLLEN paramlen;
+
+		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &param, 0, &paramlen);
 
 		SQLRETURN retCode = SQLExecute(hstmt);
 
@@ -1058,23 +1351,27 @@ private:
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
 			ReleaseHandle(hstmt);
-			std::cerr << "Database::MakeMapMonsterInfo : Failed to Execute\n";
+			std::cerr << "Database::MakePriceTable : Failed to Execute\n";
 			return;
 		}
 
-		int mapcode;
-		SQLLEN mapcodeLen;
-		int monstercode;
-		SQLLEN monstercodeLen;
+		int itemcode;
+		int num;
+		int den;
 
-		SQLBindCol(hstmt, 1, SQL_C_LONG, &mapcode, sizeof(mapcode), &mapcodeLen);
-		SQLBindCol(hstmt, 2, SQL_C_LONG, &monstercode, sizeof(monstercode), &monstercodeLen);
+		SQLLEN icodelen;
+		SQLLEN numlen;
+		SQLLEN denlen;
+
+		SQLBindCol(hstmt, 1, SQL_C_LONG, &itemcode, sizeof(itemcode), &icodelen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &num, sizeof(num), &numlen);
+		SQLBindCol(hstmt, 2, SQL_C_LONG, &den, sizeof(den), &denlen);
 
 		retCode = SQLFetch(hstmt);
 
 		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
 		{
-			m_MapEdge.Insert(mapcode, monstercode);
+			m_DropInfo.Insert(monsterCode_, MonsterDropInfo(itemcode, num, den));
 
 			retCode = SQLFetch(hstmt);
 		}
@@ -1082,14 +1379,7 @@ private:
 		ReleaseHandle(hstmt);
 
 		return;
-	}
 
-	// 사용가능성이 있는 몬스터에 대한 정보를 가져와 기록한다.
-	void MakeMonsterInfo(const int monsterCode_)
-	{
-		// if(이미 있음) return;
-		// 
-		// DB조회
 	}
 
 	RedisManager m_RedisManager;
@@ -1108,6 +1398,18 @@ private:
 	// [mapcode][npccode]
 	// 해당 맵에 해당 npc가 존재함을 표시.
 	UMultiMapWrapper<int, int> m_MapNPCInfo;
+
+	// [monstercode][DropInfo(itemcode, num, den)]
+	// 해당 몬스터가 itemcode의 아이템을 num / den 확률로 떨어뜨림을 표시.
+	UMultiMapWrapper<int, MonsterDropInfo> m_DropInfo;
+
+	// [monstercode][Experience]
+	// 해당 몬스터를 쓰러뜨리면 얻는 경험치를 표시.
+	UMapWrapper<int, int> m_MonsterEXPInfo;
+
+	// [monstercode][Gold]
+	// 해당 몬스터를 쓰러뜨리면 얻는 평균 골드를 표시.
+	UMapWrapper<int, int> m_MonsterGoldInfo;
 
 	std::vector<std::string> m_ReservedWord;
 	std::unique_ptr<MSSQL::ConnectionPool> m_Pool;

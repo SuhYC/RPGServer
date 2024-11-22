@@ -122,5 +122,11 @@
     <ClInclude Include="UMapWrapper.hpp">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="MonsterDropInfo.hpp">
+      <Filter>헤더 파일\Feat</Filter>
+    </ClInclude>
+    <ClInclude Include="ChanceEvaluator.hpp">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

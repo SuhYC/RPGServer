@@ -9,6 +9,7 @@
 #include <vector>
 #include "Monster.hpp"
 #include "Vector.hpp"
+#include "MonsterInfo.hpp"
 
 // 맵에 너무 많은 아이템이 있으면 안되니 일정 시간이 지난 후에 사라지게 만들어야함
 // Priority Queue를 이용해 <time_t, func>으로 pair를 구성하여 time_t에 대해 오름차순으로 정렬하고
@@ -17,6 +18,7 @@
 namespace RPG
 {
 	const int MAX_MONSTER_COUNT_ON_MAP = 10;
+	const int MONSTER_BITMASK_END = 1024; // 2^10 -> 2^0~2^9까지 가능
 	const int ITEM_LIFE_SEC = 60;
 	const int ITEM_OWNERSHIP_PERIOD = 20;
 	const int SPAWN_INTERVAL_SEC = 7;
@@ -45,42 +47,63 @@ namespace RPG
 			users.emplace(connectionIdx_, pUser_);
 		}
 
-		// return true : killed monster -> drop item
-		// false : monster survived.
-		bool AttackMonster(const int connectionIdx_, const int Monsteridx_, const unsigned int damage_)
+		void CreateMonster(const int monsteridx_)
+		{
+			auto currentTime = std::chrono::steady_clock::now();
+
+			if (currentTime > m_NextSpawnTime)
+			{
+				m_NextSpawnTime += std::chrono::seconds(SPAWN_INTERVAL_SEC);
+			}
+
+			m_Monsters[monsteridx_].Spawn();
+		}
+
+		void InitSpawnInfo(const int monsteridx_, const MonsterSpawnInfo& info_)
+		{
+			m_Monsters[monsteridx_].Init(info_.m_MonsterCode, info_.m_MaxHealth, info_.m_SpawnPosition);
+		}
+
+		// ret : std::pair<monstercode, charcode>
+		// charcode : heaviest dealed dealer's code (ownership)
+		// std::pair<0, ?> : no hit
+		// std::pair<monstercode, 0> : getDamaged
+		// std::pair<monstercode, charcode> : killed monster
+		std::pair<int, int> AttackMonster(const int connectionIdx_, const int Monsteridx_, const unsigned int damage_)
 		{
 			if (Monsteridx_ >= MAX_MONSTER_COUNT_ON_MAP || Monsteridx_ < 0)
 			{
-				return false;
+				return std::pair<int, int>();
 			}
 
 			Monster& target = m_Monsters[Monsteridx_];
 
 			if (target.IsAlive() == false)
 			{
-				return false;
+				return std::pair<int, int>();
 			}
 
 			auto itr = users.find(connectionIdx_);
 
 			if (itr == users.end())
 			{
-				return false;
+				return std::pair<int, int>();
 			}
 
-			int usercode = itr->second->GetUserCode();
-			int iRet = target.GetDamaged(usercode, damage_);
-
-			// --데미지 준거 전파
+			int charcode = itr->second->GetCharCode();
+			int iRet = target.GetDamaged(charcode, damage_);
 
 			// Heaviest Dealed Dealer
 			if (iRet != 0)
 			{
-				// CreateObject ...
-				// --몬스터 사망 전파, 오브젝트 생성 전파
-				return true;
+				auto currentTime = std::chrono::steady_clock::now();
+
+				ReserveJob(std::chrono::duration_cast<std::chrono::seconds>(m_NextSpawnTime - currentTime).count(), [this, Monsteridx_]() {CreateMonster(Monsteridx_); });
+
+				return std::pair<int, int>(target.GetMonsterCode(),iRet);
 			}
-			return false;
+
+			return std::pair<int, int>(target.GetMonsterCode(), 0);
 		}
 
 		void CreateObject(const int itemcode_, const int count_, const int owner_, Vector2& position_) // , const int x, const int y - position
@@ -96,11 +119,8 @@ namespace RPG
 
 			ReserveJob(ITEM_LIFE_SEC, [this, cnt]() {DiscardObject(cnt); });
 
-			// SendToAllUser() - Created Object Message
-
 			return;
 		}
-
 
 		// usercode : 0 인 경우 아이템 소멸 요청이기 때문에 그냥 준다.
 		// 유저의 습득 요청의 경우 위치정보도 같이 입력한다.
@@ -161,7 +181,6 @@ namespace RPG
 		// 특정 시간이 경과된 후 특정 함수를 실행해달라고 예약. (a,b) : a초 후에 b함수를 실행
 		std::function<void(const long long, const std::function<void()>&)> ReserveJob; 
 
-	private:
 		// 메시지 주체에 대한 정보를 해당 함수에서 작성할지 고민 필요
 		void SendToAllUser(std::string& data_, const int connectionIdx_, bool bExceptme_)
 		{
@@ -197,6 +216,8 @@ namespace RPG
 
 			return;
 		}
+	private:
+		
 
 		// concurrent_unordered_map 쓰고 싶었는데 erase가 unsafe하다..
 		std::map<int, User*> users; // connidx, userData 

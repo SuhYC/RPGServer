@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include "MapManager.hpp"
 #include "UserManager.hpp"
+#include "ChanceEvaluator.hpp"
 
 /*
 * Json -> param -> Operation
@@ -246,9 +247,16 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
 		}
 
+		if (!m_DB.ReserveNickname(stParam.CharName))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
+		}
 
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
-		return RESULTCODE::SUCCESS;
+		pUser->SetReserveNickname(stParam.CharName);
+
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
 	RESULTCODE HandleCancelCharNameReserve(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -260,9 +268,24 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
 		}
 
+		if (stParam.CharName.empty())
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
+		}
 
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
-		return RESULTCODE::SUCCESS;
+		if (pUser->GetReserveNickname() != stParam.CharName)
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
+		}
+
+		if (!m_DB.CancelReserveNickname(stParam.CharName))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
+		}
+
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
 	RESULTCODE HandleCreateChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -273,11 +296,22 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
 		}
 
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
+		// 예약이 만료 혹은 잘못된 요청
+		// 혹시 여기 분기에 걸릴지도 모르니 서버에서 판단하는 시간보다 클라이언트에서 판단하는 유효기간을 짧게 할 것.
+		if (pUser->GetReserveNickname() != stParam.CharName)
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
+		}
 
+		// 시작맵 코드를 아직 안정했다. 여러맵에서 시작하게 할까 아니면 한 맵에서만 시작할까
+		if (!m_DB.CreateCharactor(pUser->GetUserCode(), stParam.CharName, 0))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
+		}
 
-
-		return RESULTCODE::SUCCESS;
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
 	RESULTCODE HandleSelectChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -312,7 +346,12 @@ private:
 		// 맵 생성 직후 초기화 필요
 		if (pMap->IsNew())
 		{
-			// --초기화
+			std::vector<MonsterSpawnInfo> spawnInfo = m_DB.GetMonsterSpawnInfo(pInfo->LastMapCode);
+
+			for (size_t i = 0; i < spawnInfo.size(); i++)
+			{
+				pMap->InitSpawnInfo(i, spawnInfo[i]);
+			}
 		}
 
 		pMap->UserEnter(userindex_, pUser);
@@ -320,8 +359,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
-	// 클라이언트에서 자기 데미지는 임의의 값으로 판단해도 된다.
-	// 임의판단이 맘에 안들면 시간변수를 이용해 난수를 이용한 시뮬레이션을 해도 될듯..
+	// 클라이언트에서 자기 데미지는 시간변수를 이용해 난수를 이용한 시뮬레이션을 해도 될듯..
 	RESULTCODE HandlePerformSkill(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		PerformSkillParameter stParam;
@@ -331,7 +369,7 @@ private:
 		}
 
 		// --캐릭터가 스킬을 사용했다는 사실을 전파 (GameMap의 SendToAll을 만들고 사용하자.)
-		
+
 		// 적중한 몬스터 없음
 		if (stParam.monsterbitmask == 0)
 		{
@@ -340,8 +378,8 @@ private:
 
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
-		// --시전한 스킬정보와 유저의 현재 스탯을 기반으로 데미지 계산
-
+		// 일단 기준값을 계산하고, 몬스터에 적용할 때 난수를 곱하자.
+		long long damage = pUser->calStatDamage(); 
 
 		// 해당 요청을 처리하기 전에 맵이 이동되어 반려.
 		if (pUser->GetMapCode() != stParam.mapcode)
@@ -351,7 +389,37 @@ private:
 
 		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
 
-		// --타격한 몬스터 정보에 맞게 맵에 전파 (맵에서 몬스터 데미지처리와 사망처리, 결과 전파 진행)
+		stParam.monsterbitmask;
+
+		for (int bit = 1, cnt = 0; cnt < RPG::MAX_MONSTER_COUNT_ON_MAP; cnt++, bit *= 2)
+		{
+			// 해당 비트의 몬스터는 타격대상이 아님.
+			if ((stParam.monsterbitmask & bit) == 0)
+			{
+				continue;
+			}
+
+			// 일단 0.75 ~ 1.25의 값을 곱해서 최종적으로 데미지를 정한다.
+			long long finalDamage = ChanceEvaluator::GetInstance().CalDamage(damage, 0.25);
+
+			if (finalDamage == 0)
+			{
+				continue;
+			}
+
+			auto pair = pMap->AttackMonster(userindex_, cnt, finalDamage);
+
+			if (pair.first != 0)
+			{
+				// --해당 몬스터에 데미지를 주었음을 전파
+			}
+
+			if (pair.second != 0)
+			{
+				// --해당 코드에 맞는 아이템 생성
+				// --해당 맵에 사망처리 전파
+			}
+		}
 
 		return RESULTCODE::SUCCESS;
 	}

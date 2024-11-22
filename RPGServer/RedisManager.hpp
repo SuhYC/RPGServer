@@ -16,6 +16,9 @@
 *  - 2번 데이터를 변경하기 위한 레디스분산락. 사용 후 반드시 해제하여야한다.
 *  - 분산락을 걸고 해제하기 전에 서버가 다운되면 큰일이다.
 *  - 유효기간을 걸어야겠다. 10초 정도로 할까?
+* 4. "ReserveNick" + std::string
+*  - 캐릭터 생성에 있어 닉네임을 예약하고 생성여부를 재확인하기 위해 만든 락.
+*  - 3번과 마찬가지로 유효기간을 건다.
 *
 * 레디스 분산락
 * 1. 읽기에는 쓰지 않는다.
@@ -235,6 +238,46 @@ public:
 		return REDISRETURN::SUCCESS;
 	}
 
+	// 캐릭터 생성을 위해 닉네임을 예약한다.
+	// N분 동안 예약할 수 있도록 하자. (lock을 거는거나 마찬가지니..)
+	bool ReserveNickname(std::string& nickname_, const int lockTimeMillisec_ = RESERVE_NICKNAME_TIME_MILLISECS)
+	{
+		std::string key = "ReserveNick" + nickname_;
+
+		redisContext* rc = AllocateConnection();
+		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "SET %s %s NX PX %d", key.c_str(), "LOCK", lockTimeMillisec_));
+		DeallocateConnection(rc);
+
+		if (reply != nullptr)
+		{
+			if (reply->type == REDIS_REPLY_STATUS &&
+				strcmp(reply->str, "OK") == 0)
+			{
+				freeReplyObject(reply);
+				return true;
+			}
+		}
+
+		freeReplyObject(reply);
+		return false;
+	}
+
+	// ReserveNickname을 취소한다.
+	// 반드시 해당 닉네임을 예약하는데 성공한 유저인지 확인하고 시도할 것.
+	bool CancelReserveNickname(std::string& nickname_)
+	{
+		std::string key = "ReserveNick" + nickname_;
+
+		if (Del(key))
+		{
+			return true;
+		}
+		else
+		{
+			return false;
+		}
+	}
+
 private:
 	// for create data
 	// str(usercode+datatype) : key_
@@ -423,12 +466,12 @@ private:
 	}
 
 	// 수정할 데이터의 키값을 그대로 넣으면 된다.
-	bool Lock(const std::string& lockname_)
+	bool Lock(const std::string& lockname_, const int lockTimeMillisec_ = REDIS_LOCK_TIME_MILLISECS)
 	{
 		std::string key = "lock" + lockname_;
 
 		redisContext* rc = AllocateConnection();
-		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "SET %s %s NX PX %d", key.c_str(), "LOCK", REDIS_LOCK_TIME_MILLISECS));
+		redisReply* reply = reinterpret_cast<redisReply*>(redisCommand(rc, "SET %s %s NX PX %d", key.c_str(), "LOCK", lockTimeMillisec_));
 		DeallocateConnection(rc);
 
 		if (reply != nullptr)
@@ -476,5 +519,7 @@ private:
 
 	std::unique_ptr<Redis::ConnectionPool> m_ConnectionPool;
 	JsonMaker m_jsonMaker;
-	const int REDIS_LOCK_TIME_MILLISECS = 10000;
+
+	static const int REDIS_LOCK_TIME_MILLISECS = 10000;
+	static const int RESERVE_NICKNAME_TIME_MILLISECS = 60 * 10 * 1000; // 일단 10분
 };

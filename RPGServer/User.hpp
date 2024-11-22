@@ -6,6 +6,8 @@
 #include <iostream>
 #include <chrono>
 
+const int RESERVE_NICKNAME_TIME_SEC = 5 * 60;
+
 class User
 {
 public:
@@ -92,6 +94,26 @@ public:
 	int GetMapCode() const noexcept { return m_mapIdx; }
 	bool IsConnected() const noexcept { return m_IsConnected; }
 	const std::string& GetIP() const noexcept { return m_ip; }
+	
+	std::string GetReserveNickname() noexcept
+	{
+		auto currentTime = std::chrono::steady_clock::now();
+
+		// 유효기간이 지남.
+		if (currentTime > m_ValidTimeOfReserveNickname)
+		{
+			m_reserveNickname = "";
+			return std::string();
+		}
+
+		return m_reserveNickname;
+	}
+
+	void SetReserveNickname(std::string& nickname_)
+	{
+		m_reserveNickname = nickname_;
+		m_ValidTimeOfReserveNickname = std::chrono::steady_clock::now() + std::chrono::seconds(RESERVE_NICKNAME_TIME_SEC);
+	}
 
 	// 데드레커닝.
 	// 위치와 속도를 이용해 마지막 업데이트로부터 시간차를 이용해 위치를 계산한다.
@@ -105,6 +127,18 @@ public:
 	}
 
 	Vector2 GetVelocity() const noexcept { return m_stVelocity; }
+
+	long long calStatDamage() const
+	{
+		if (m_pCharInfo == nullptr)
+		{
+			return 0;
+		}
+
+
+
+		return 1;
+	}
 
 	std::function<void(CharInfo*)> ReleaseInfo;
 
@@ -121,4 +155,7 @@ private:
 	std::chrono::steady_clock::time_point m_LastUpdateTime;
 
 	bool m_IsConnected;
+
+	std::string m_reserveNickname;
+	std::chrono::steady_clock::time_point m_ValidTimeOfReserveNickname;
 };

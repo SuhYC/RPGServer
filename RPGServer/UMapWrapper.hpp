@@ -76,9 +76,75 @@ public:
 
 		return;
 	}
+	// 이미 key에 해당하는 데이터가 삽입되어있다면 실패한다.
+	void Insert(const T1& key_, const T2&& value_)
+	{
+		ummap.emplace(key_, value_);
+
+		return;
+	}
+	// 이미 key에 해당하는 데이터가 삽입되어있다면 실패한다.
+	void Insert(const T1&& key_, const T2& value_)
+	{
+		ummap.emplace(key_, value_);
+
+		return;
+	}
+	// 이미 key에 해당하는 데이터가 삽입되어있다면 실패한다.
+	void Insert(const T1&& key_, const T2&& value_)
+	{
+		ummap.emplace(key_, value_);
+
+		return;
+	}
 
 	// key-value가 일치하는 데이터가 있는지 여부를 booline으로 리턴한다.
 	bool Find(const T1& key_, const T2& value_)
+	{
+		auto range = ummap.equal_range(key_);
+
+		for (auto& itr = range.first; itr != range.second; itr++)
+		{
+			if (itr->second == value_)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+	// key-value가 일치하는 데이터가 있는지 여부를 booline으로 리턴한다.
+	bool Find(const T1& key_, const T2&& value_)
+	{
+		auto range = ummap.equal_range(key_);
+
+		for (auto& itr = range.first; itr != range.second; itr++)
+		{
+			if (itr->second == value_)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+	// key-value가 일치하는 데이터가 있는지 여부를 booline으로 리턴한다.
+	bool Find(const T1&& key_, const T2& value_)
+	{
+		auto range = ummap.equal_range(key_);
+
+		for (auto& itr = range.first; itr != range.second; itr++)
+		{
+			if (itr->second == value_)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+	// key-value가 일치하는 데이터가 있는지 여부를 booline으로 리턴한다.
+	bool Find(const T1&& key_, const T2&& value_)
 	{
 		auto range = ummap.equal_range(key_);
 
@@ -98,7 +164,7 @@ public:
 	// ret.second : end()
 	// 템플릿 타입으로 인해 발생하는 지연된 이름 해석 문제(dependent name resolution) -> typename 추가
 	// https://learn.microsoft.com/ko-kr/cpp/cpp/name-resolution-for-dependent-types?view=msvc-170
-	std::pair<typename std::unordered_multimap<T1, T2>::iterator, typename std::unordered_multimap<T1, T2>::iterator> Get(T1& key_)
+	std::pair<typename std::unordered_multimap<T1, T2>::iterator, typename std::unordered_multimap<T1, T2>::iterator> Get(const T1& key_)
 	{
 		return ummap.equal_range(key_);
 	}

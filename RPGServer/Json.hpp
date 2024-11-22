@@ -209,9 +209,8 @@ public:
 		doc.AddMember("Gold", pInfo_.Gold, allocator);
 		doc.AddMember("LastMapCode", pInfo_.LastMapCode, allocator);
 
-		// wchar_t[] Member
-		std::string utf8str = m_cvt.to_bytes(pInfo_.CharName);
-		doc.AddMember("CharName", rapidjson::Value().SetString(utf8str.c_str(), static_cast<rapidjson::SizeType>(utf8str.length())), allocator);
+		std::string strCharName(pInfo_.CharName);
+		doc.AddMember("CharName", rapidjson::Value().SetString(strCharName.c_str(), static_cast<rapidjson::SizeType>(strCharName.length())), allocator);
 
 		// Make JsonString
 		rapidjson::StringBuffer buffer;
@@ -230,15 +229,13 @@ public:
 
 		if (doc.HasMember("Type") && doc["Type"].IsString() && strcmp(doc["Type"].GetString(), "CharInfo") == 0)
 		{
-			// wstring Member
 			const char* str = doc["CharName"].GetString();
-			std::wstring wstr = m_cvt.from_bytes(str).c_str();
 
-			if (wstr.length() >= 11)
+			if (strlen(str) > 10)
 			{
 				return false;
 			}
-			wcscpy_s(out_.CharName, wstr.c_str());
+			strcpy_s(out_.CharName, str);
 
 			// int Members
 			out_.CharNo = doc["CharNo"].GetInt();
@@ -598,9 +595,21 @@ public:
 
 	bool ToCreateCharParameter(const std::string& str_, CreateCharParameter& out_)
 	{
+		rapidjson::Document doc;
 
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToCreateCharParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << '\n';
+			return false;
+		}
 
+		if (!doc.HasMember("CharName") || !doc["CharName"].IsString())
+		{
+			std::cerr << "Json::ToReserveCharNameParam : Incorrect Format.\n";
+			return false;
+		}
 
+		out_.CharName = std::string(doc["CharName"].GetString());
 
 		return true;
 	}

@@ -6,12 +6,20 @@
 class Monster
 {
 public:
-	void Init(const unsigned int monsterCode_, const unsigned int MaxHealthPoint, Vector2& position_, Vector2& vel_)
+	void Init(const unsigned int monsterCode_, const unsigned int MaxHealthPoint, const Vector2& position_)
 	{
 		m_MonsterCode = monsterCode_;
-		m_HealthPoint = MaxHealthPoint;
-		m_position = position_;
-		m_velocity = vel_;
+		m_MaxHealthPoint = MaxHealthPoint;
+		m_SpawnPosition = position_;
+
+		Spawn();
+	}
+
+	void Spawn()
+	{
+		Clear();
+		m_HealthPoint = m_MaxHealthPoint;
+		m_position = m_SpawnPosition;
 		m_bIsAlive = true;
 	}
 
@@ -58,21 +66,26 @@ public:
 		return 0;
 	}
 
+	unsigned int GetMonsterCode() const { return m_MonsterCode; }
+
+	bool IsAlive() const { return m_bIsAlive; }
+
+private:
 	// 정보를 아예 초기화하는 함수다. 보상처리가 끝날때까지 사용하지 말것.
 	void Clear()
 	{
 		m_CumulativeDamage.clear();
 	}
 
-	bool IsAlive() const { return m_bIsAlive; }
-
-private:
 	std::map<int, unsigned int> m_CumulativeDamage;
 	std::mutex m;
 
 	bool m_bIsAlive;
 	unsigned int m_MonsterCode;
 	unsigned int m_HealthPoint;
+	unsigned int m_MaxHealthPoint;
+
+	Vector2 m_SpawnPosition;
+
 	Vector2 m_position;
-	Vector2 m_velocity;
 };

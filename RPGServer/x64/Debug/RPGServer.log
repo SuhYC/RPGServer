@@ -1,33 +1,46 @@
 ﻿  main.cpp
 C:\Users\psyc\source\repos\RPGServer\RPGServer\PacketData.hpp(97,29): warning C4267: '인수': 'size_t'에서 'const ULONG'(으)로 변환하면서 데이터가 손실될 수 있습니다.
 C:\Users\psyc\source\repos\RPGServer\RPGServer\PacketData.hpp(119,42): warning C4267: '인수': 'size_t'에서 'const ULONG'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(102,13): warning C4244: '초기화 중': '_Rep'에서 'int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(102,13): warning C4244:         with
-C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(102,13): warning C4244:         [
-C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(102,13): warning C4244:             _Rep=__int64
-C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(102,13): warning C4244:         ]
+C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(124,13): warning C4244: '초기화 중': '_Rep'에서 'int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(124,13): warning C4244:         with
+C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(124,13): warning C4244:         [
+C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(124,13): warning C4244:             _Rep=__int64
+C:\Users\psyc\source\repos\RPGServer\RPGServer\User.hpp(124,13): warning C4244:         ]
 C:\Users\psyc\source\repos\RPGServer\RPGServer\hiredis_lib\include\hiredis\sds.h(55,10): warning C4200: 비표준 확장이 사용됨: 구조체/공용 구조체의 배열 크기가 0입니다.
 C:\Users\psyc\source\repos\RPGServer\RPGServer\hiredis_lib\include\hiredis\sds.h(61,10): warning C4200: 비표준 확장이 사용됨: 구조체/공용 구조체의 배열 크기가 0입니다.
 C:\Users\psyc\source\repos\RPGServer\RPGServer\hiredis_lib\include\hiredis\sds.h(67,10): warning C4200: 비표준 확장이 사용됨: 구조체/공용 구조체의 배열 크기가 0입니다.
 C:\Users\psyc\source\repos\RPGServer\RPGServer\hiredis_lib\include\hiredis\sds.h(73,10): warning C4200: 비표준 확장이 사용됨: 구조체/공용 구조체의 배열 크기가 0입니다.
 C:\Users\psyc\source\repos\RPGServer\RPGServer\hiredis_lib\include\hiredis\sds.h(79,10): warning C4200: 비표준 확장이 사용됨: 구조체/공용 구조체의 배열 크기가 0입니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(315,15): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(320,20): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(342,30): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(344,43): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(345,41): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(346,40): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(416,10): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(420,15): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(420,50): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(421,12): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(421,45): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(422,12): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(422,44): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(428,9): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(428,23): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(428,54): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(428,85): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(312,15): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(317,20): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(339,30): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(341,43): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(342,41): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(343,40): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(413,10): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(417,15): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(417,50): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(418,12): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(418,45): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(419,12): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(419,44): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(425,9): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(425,23): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(425,54): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(425,85): warning C4267: '인수': 'size_t'에서 'rapidjson::SizeType'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Database.hpp(1290,11): warning C4305: 'return': 'int'에서 'bool'(으)로 잘립니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,43): warning C4244: '인수': '__int64'에서 '_Ty'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,43): warning C4244:         with
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,43): warning C4244:         [
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,43): warning C4244:             _Ty=int
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,43): warning C4244:         ]
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,39): warning C4244: '인수': '__int64'에서 '_Ty'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,39): warning C4244:         with
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,39): warning C4244:         [
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,39): warning C4244:             _Ty=int
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ChanceEvaluator.hpp(55,39): warning C4244:         ]
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ReqHandler.hpp(353,25): warning C4267: '인수': 'size_t'에서 'const int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\ReqHandler.hpp(410,53): warning C4244: '인수': '__int64'에서 'const unsigned int'(으)로 변환하면서 데이터가 손실될 수 있습니다.
+C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(258,1): warning C4715: 'JsonMaker::ToCharInfo': 모든 제어 경로에서 값을 반환하지는 않습니다.
 C:\Users\psyc\source\repos\RPGServer\RPGServer\ODBCConnectionPool.hpp(130,1): warning C4715: 'MSSQL::ConnectionPool::MakeNewConnection': 모든 제어 경로에서 값을 반환하지는 않습니다.
-C:\Users\psyc\source\repos\RPGServer\RPGServer\Json.hpp(261,1): warning C4715: 'JsonMaker::ToCharInfo': 모든 제어 경로에서 값을 반환하지는 않습니다.
   RPGServer.vcxproj -> C:\Users\psyc\source\repos\RPGServer\x64\Debug\RPGServer.exe
