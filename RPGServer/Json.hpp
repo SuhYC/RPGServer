@@ -84,6 +84,9 @@ struct ResMessage
 	std::string msg; // optional (ex. charinfo jsonstr)
 };
 
+// ----- client side data
+
+
 struct SignInParameter
 {
 	std::string id;
@@ -180,6 +183,35 @@ struct PosInfoParameter
 {
 	Vector2 pos;
 	Vector2 vel;
+};
+
+// ----- server side data
+
+// 굳이 응답이라기 보다는 서버->클라이언트의 정보전달을 의미한다.
+struct PosInfoResponse
+{
+	int charcode;
+	Vector2 pos;
+	Vector2 vel;
+};
+
+struct PerformSkillInfoResponse
+{
+	int charcode;
+	int skillcode;
+};
+
+struct MonsterDespawnResponse
+{
+	int monsteridx;
+};
+
+struct CreateObjectResponse
+{
+	int objectidx;
+	int itemcode;
+	int count;
+	Vector2 position;
 };
 
 class JsonMaker

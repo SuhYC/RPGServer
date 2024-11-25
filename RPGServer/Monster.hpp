@@ -2,6 +2,7 @@
 
 #include "Vector.hpp"
 #include <map>
+#include <atomic>
 
 class Monster
 {
@@ -15,19 +16,26 @@ public:
 		Spawn();
 	}
 
-	void Spawn()
+	bool Spawn()
 	{
+		if (m_bIsAlive)
+		{
+			return false;
+		}
+
 		Clear();
 		m_HealthPoint = m_MaxHealthPoint;
 		m_position = m_SpawnPosition;
 		m_bIsAlive = true;
+
+		return true;
 	}
 
 	// ret : if Monster died -> who got the reward
 	// ret 0 : Monster still alive
 	int GetDamaged(const int usercode_, const unsigned int damage_)
 	{
-		std::lock_guard<std::mutex> guard(m);
+		std::lock_guard<std::mutex> guard(m_mutex);
 
 		if (m_bIsAlive == false)
 		{
@@ -77,15 +85,16 @@ private:
 		m_CumulativeDamage.clear();
 	}
 
-	std::map<int, unsigned int> m_CumulativeDamage;
-	std::mutex m;
+	std::mutex m_mutex;
 
-	bool m_bIsAlive;
 	unsigned int m_MonsterCode;
-	unsigned int m_HealthPoint;
 	unsigned int m_MaxHealthPoint;
-
 	Vector2 m_SpawnPosition;
 
-	Vector2 m_position;
+	// --°¡º¯·®
+	std::atomic<unsigned int> m_HealthPoint;
+	std::atomic<Vector2> m_position;
+	std::atomic<bool> m_bIsAlive;
+
+	std::map<int, unsigned int> m_CumulativeDamage;
 };

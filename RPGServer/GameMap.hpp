@@ -20,17 +20,23 @@ namespace RPG
 	const int MAX_MONSTER_COUNT_ON_MAP = 10;
 	const int MONSTER_BITMASK_END = 1024; // 2^10 -> 2^0~2^9까지 가능
 	const int ITEM_LIFE_SEC = 60;
-	const int ITEM_OWNERSHIP_PERIOD = 20;
+	const int ITEM_OWNERSHIP_PERIOD_SEC = 20;
 	const int SPAWN_INTERVAL_SEC = 7;
 	const float DISTANCE_LIMIT_GET_OBJECT = 5.0f;
 
 	class Map
 	{
 	public:
-		Map(const int mapcode_) : m_mapcode(mapcode_) {};
+		Map(const int mapcode_) : m_mapcode(mapcode_), m_IsNew(true) {};
 
 		void Init(const int monstercode_, const int monstercount_)
 		{
+			if (m_IsNew == false)
+			{
+				return;
+			}
+
+			m_IsNew = false;
 			m_itemcnt = 0;
 			m_NextSpawnTime = std::chrono::steady_clock::now() + std::chrono::seconds(SPAWN_INTERVAL_SEC);
 		}
@@ -47,16 +53,27 @@ namespace RPG
 			users.emplace(connectionIdx_, pUser_);
 		}
 
-		void CreateMonster(const int monsteridx_)
+		// 하나를 소환하는 것보다 맵 전체의 몬스터를 조회하며 소환하도록 하는게 나을것 같다.
+		void CreateMonster()
 		{
-			auto currentTime = std::chrono::steady_clock::now();
+			bool bIsSpawned = false;
 
-			if (currentTime > m_NextSpawnTime)
+			for (size_t idx = 0; idx < MAX_MONSTER_COUNT_ON_MAP; idx++)
 			{
-				m_NextSpawnTime += std::chrono::seconds(SPAWN_INTERVAL_SEC);
+				if (m_Monsters[idx].Spawn())
+				{
+					bIsSpawned = true;
+				}
 			}
 
-			m_Monsters[monsteridx_].Spawn();
+			// 소환된 몬스터가 없다면 해당 맵에 Spawn을 위해 조회할 이유가 없다.
+			// 조회가 멈춘 이후 다시 조회를 시작하는건 몬스터의 사망판정으로부터 시작된다.
+			if (bIsSpawned)
+			{
+				m_NextSpawnTime = std::chrono::steady_clock::now() + std::chrono::seconds(SPAWN_INTERVAL_SEC);
+
+				ReserveJob(SPAWN_INTERVAL_SEC, [this]() {CreateMonster(); });
+			}
 		}
 
 		void InitSpawnInfo(const int monsteridx_, const MonsterSpawnInfo& info_)
@@ -83,14 +100,14 @@ namespace RPG
 				return std::pair<int, int>();
 			}
 
-			auto itr = users.find(connectionIdx_);
+			User* pUser = GetUserInstanceByConnIdx(connectionIdx_);
 
-			if (itr == users.end())
+			if (pUser == nullptr)
 			{
 				return std::pair<int, int>();
 			}
 
-			int charcode = itr->second->GetCharCode();
+			int charcode = pUser->GetCharCode();
 			int iRet = target.GetDamaged(charcode, damage_);
 
 			// Heaviest Dealed Dealer
@@ -98,8 +115,13 @@ namespace RPG
 			{
 				auto currentTime = std::chrono::steady_clock::now();
 
-				ReserveJob(std::chrono::duration_cast<std::chrono::seconds>(m_NextSpawnTime - currentTime).count(), [this, Monsteridx_]() {CreateMonster(Monsteridx_); });
-
+				// 조회가 멈췄던 맵이므로 다시 조회를 시작한다.
+				if (currentTime > m_NextSpawnTime.load())
+				{
+					m_NextSpawnTime = currentTime + std::chrono::seconds(SPAWN_INTERVAL_SEC);
+					ReserveJob(SPAWN_INTERVAL_SEC, [this]() {CreateMonster(); });
+				}
+				
 				return std::pair<int, int>(target.GetMonsterCode(),iRet);
 			}
 
@@ -113,7 +135,7 @@ namespace RPG
 
 			time_t now = time(NULL);
 
-			obj->Init(itemcode_, count_, owner_, position_, now + ITEM_OWNERSHIP_PERIOD);
+			obj->Init(itemcode_, count_, owner_, position_, now + ITEM_OWNERSHIP_PERIOD_SEC);
 			unsigned int cnt = m_itemcnt++;
 			m_itemObjects.emplace(cnt, obj);
 
@@ -167,7 +189,7 @@ namespace RPG
 		}
 
 		// 생성 직후 초기화가 필요한지 확인하는 함수.
-		bool IsNew() { return std::chrono::duration_cast<std::chrono::seconds>(m_NextSpawnTime.time_since_epoch()).count() == 0; }
+		bool IsNew() { return m_IsNew; }
 
 		//----- func pointer
 		std::function<PacketData* ()> AllocatePacket;
@@ -191,6 +213,8 @@ namespace RPG
 				return;
 			}
 			pTmpPacket->Init(0, data_);
+
+			std::lock_guard<std::mutex> guard(m_userMutex);
 
 			for (auto& i : users)
 			{
@@ -217,20 +241,31 @@ namespace RPG
 			return;
 		}
 	private:
-		
+		User* GetUserInstanceByConnIdx(const int conn_idx_)
+		{
+			std::lock_guard<std::mutex> guard(m_userMutex);
 
-		// concurrent_unordered_map 쓰고 싶었는데 erase가 unsafe하다..
+			auto itr = users.find(conn_idx_);
+
+			if (itr == users.end())
+			{
+				return nullptr;
+			}
+
+			return itr->second;
+		}
+
 		std::map<int, User*> users; // connidx, userData 
 		std::map<unsigned int, ItemObject*> m_itemObjects;
 
 		Monster m_Monsters[MAX_MONSTER_COUNT_ON_MAP];
 
-		// C++14에서 읽쓰락을 쓰긴 좀 그러니..
 		std::mutex m_userMutex;
 		std::mutex m_itemMutex; 
 
-		unsigned int m_itemcnt = 0;
-		int m_mapcode;
-		std::chrono::steady_clock::time_point m_NextSpawnTime;
+		std::atomic<unsigned int> m_itemcnt = 0;
+		std::atomic<int> m_mapcode;
+		std::atomic<bool> m_IsNew;
+		std::atomic<std::chrono::steady_clock::time_point> m_NextSpawnTime;
 	};
 }

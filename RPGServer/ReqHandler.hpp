@@ -122,7 +122,7 @@ public:
 		return;
 	}
 
-	void SetIP(const int connidx_, std::string& ip_)
+	void SetIP(const int connidx_, const uint32_t ip_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(connidx_);
 		pUser->SetIP(ip_);

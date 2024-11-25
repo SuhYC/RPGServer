@@ -86,7 +86,7 @@ public:
 	}
 
 private:
-	void OnConnect(const unsigned short index_, std::string& ip_) override
+	void OnConnect(const unsigned short index_, const uint32_t ip_) override
 	{
 		m_ReqHandler.SetIP(index_, ip_);
 		return;

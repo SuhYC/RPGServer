@@ -7,8 +7,6 @@ class Vector2
 public:
 	Vector2() : x(0.0f), y(0.0f) {}
 	Vector2(float x_, float y_) : x(x_), y(y_) {}
-	Vector2(Vector2& other_) : x(other_.x), y(other_.y) {}
-	Vector2(const Vector2& other_) : x(other_.x), y(other_.y) {}
 
 	void Set(float x_, float y_)
 	{
@@ -16,20 +14,6 @@ public:
 		y = y_;
 	}
 
-	Vector2& operator=(const Vector2& other_)
-	{
-		x = other_.x;
-		y = other_.y;
-
-		return *this;
-	}
-	Vector2& operator=(const Vector2&& other_) noexcept
-	{
-		x = other_.x;
-		y = other_.y;
-
-		return *this;
-	}
 	bool operator==(const Vector2& other_) const
 	{
 		return x == other_.x && y == other_.y;

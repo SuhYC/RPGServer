@@ -272,7 +272,7 @@ private:
 			return;
 		}
 
-		std::string ip = "";
+		uint32_t ip;
 		result = pConnection->GetIP(ip);
 
 		if (result == false)
@@ -330,7 +330,7 @@ private:
 		m_PacketPool->Deallocate(freePacket);
 	}
 
-	virtual void OnConnect(const unsigned short clientIndex_, std::string&) = 0;
+	virtual void OnConnect(const unsigned short clientIndex_, const uint32_t ip_) = 0;
 	virtual void OnReceive(const unsigned short clientIndex_, char* pData_, const DWORD dataSize_) = 0;
 	virtual void OnDisconnect(const unsigned short clientIndex) = 0;
 
