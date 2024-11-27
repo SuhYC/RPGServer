@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Define.hpp"
+#include <sstream>
 #include <atomic>
 
 // Network IO Packet
@@ -38,14 +39,12 @@ private:
 	};
 	unsigned short m_SessionIndex;
 	Block* m_pBlock;
-	stOverlappedEx m_Overlapped;
 
 public:
 	PacketData()
 	{
 		m_SessionIndex = 0;
 		m_pBlock = nullptr;
-		m_Overlapped = { 0 };
 	}
 
 	virtual ~PacketData()
@@ -76,36 +75,20 @@ public:
 	}
 
 	// 초기화
-	void Init(const unsigned short sessionIndex_, char* pData_, const size_t dataSize_)
-	{
-		m_SessionIndex = sessionIndex_;
-		char* msg = nullptr;
-
-		try
-		{
-			msg = new char[dataSize_ + 1];
-		}
-		catch (const std::bad_alloc&)
-		{
-			std::cerr << "PacketData::Init : 메모리 부족\n";
-			return;
-		}
-
-		CopyMemory(msg, pData_, dataSize_);
-		msg[dataSize_] = NULL;
-
-		m_pBlock = new Block(msg, dataSize_);
-	}
-
-	// 초기화
 	void Init(const unsigned short sessionIndex_, std::string& strData_)
 	{
 		m_SessionIndex = sessionIndex_;
+
+		std::ostringstream oss;
+		oss << "[" << strData_.size() << "]" << strData_;
+
+		std::string newstr = oss.str();
+
 		char* msg = nullptr;
 
 		try
 		{
-			msg = new char[strData_.size() + 1];
+			msg = new char[newstr.size()];
 		}
 		catch (const std::bad_alloc&)
 		{
@@ -113,10 +96,9 @@ public:
 			return;
 		}
 
-		CopyMemory(msg, strData_.c_str(), strData_.size());
-		msg[strData_.size()] = NULL;
+		CopyMemory(msg, newstr.c_str(), newstr.size());
 
-		m_pBlock = new Block(msg, strData_.size());
+		m_pBlock = new Block(msg, newstr.size());
 	}
 
 	// 복사
@@ -129,16 +111,4 @@ public:
 
 	Block* GetBlock() const { return m_pBlock; }
 	const unsigned short GetClient() const { return m_SessionIndex; }
-
-	void SetOverlapped()
-	{
-		ZeroMemory(&m_Overlapped, sizeof(stOverlappedEx));
-
-		m_Overlapped.m_wsaBuf.len = m_pBlock->dataSize;
-		m_Overlapped.m_wsaBuf.buf = m_pBlock->pData;
-		m_Overlapped.m_eOperation = eIOOperation::SEND;
-		m_Overlapped.m_userIndex = m_SessionIndex;
-	}
-
-	stOverlappedEx& GetOverlapped() { return m_Overlapped; }
 };

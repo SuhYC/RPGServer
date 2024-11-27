@@ -78,7 +78,7 @@ public:
 			return false;
 		}
 
-		std::lock_guard<std::mutex> guard(m_mutex);
+		//std::lock_guard<std::mutex> guard(m_mutex);
 
 		// 남은 공간 초과
 		if ((m_WritePos > m_ReadPos && (m_WritePos + size_) >= m_ReadPos + m_Capacity) ||
@@ -111,7 +111,7 @@ public:
 	// ret : peeked Data size
 	int dequeue(char* out_, int maxSize_)
 	{
-		std::lock_guard<std::mutex> guard(m_mutex);
+		//std::lock_guard<std::mutex> guard(m_mutex);
 
 		if (IsEmpty())
 		{
@@ -177,6 +177,20 @@ public:
 		}
 	}
 
+	int Size() const
+	{
+		if (IsEmpty())
+		{
+			return 0;
+		}
+
+		if (m_ReadPos < m_WritePos)
+		{
+			return m_WritePos - m_ReadPos;
+		}
+
+		return m_WritePos + m_Capacity - m_ReadPos;
+	}
 	bool IsEmpty() const { return m_ReadPos == m_WritePos; }
 	bool IsFull() const { return (m_WritePos + 1) % m_Capacity == m_ReadPos; }
 private:
@@ -186,5 +200,5 @@ private:
 	char* m_pData;
 	int m_Capacity;
 
-	std::mutex m_mutex;
+	//std::mutex m_mutex;
 };

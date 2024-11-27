@@ -66,6 +66,11 @@ public:
 		}
 
 		pConnection->SendMsg(pPacket_);
+
+		pPacket_->Clear();
+
+		m_PacketPool->Deallocate(pPacket_);
+
 		return true;
 	}
 
@@ -272,14 +277,6 @@ private:
 			return;
 		}
 
-		uint32_t ip;
-		result = pConnection->GetIP(ip);
-
-		if (result == false)
-		{
-			std::cerr << "IOCP::DoAccept : GetIP Failed\n";
-		}
-
 		result = pConnection->BindRecv();
 
 		if (result == false)
@@ -287,6 +284,14 @@ private:
 			pConnection->Close();
 			pConnection->ResetConnection();
 			return;
+		}
+
+		uint32_t ip;
+		result = pConnection->GetIP(ip);
+
+		if (result == false)
+		{
+			std::cerr << "IOCP::DoAccept : GetIP Failed\n";
 		}
 
 		OnConnect(pOverlapped_->m_userIndex, ip);
@@ -326,8 +331,8 @@ private:
 			return;
 		}
 
-		PacketData* freePacket = pConnection->SendCompleted();
-		m_PacketPool->Deallocate(freePacket);
+		pConnection->SendCompleted();
+		return;
 	}
 
 	virtual void OnConnect(const unsigned short clientIndex_, const uint32_t ip_) = 0;

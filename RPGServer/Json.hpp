@@ -33,29 +33,31 @@
 
 enum class MessageType
 {
-	SIGNIN,
-	SIGNUP,
-	MODIFY_PW,
-	GET_CHAR_LIST,
-	GET_CHAR_INFO,
-	RESERVE_CHAR_NAME, // 캐릭터 생성 시 닉네임을 입력할 경우 미리 예약을 건 후, 가능한 닉네임인 경우 사용할 지 여부를 선택한다.
-	CANCEL_CHAR_NAME_RESERVE, // RESERVE_CHAR_NAME으로 예약한 닉네임을 취소한다.
-	CREATE_CHAR, // 캐릭터 생성 결정. DB에 캐릭터 정보를 기록한다.
-	SELECT_CHAR,
-	PERFORM_SKILL,
-	GET_OBJECT,
-	BUY_ITEM,
-	DROP_ITEM,
-	USE_ITEM,
-	MOVE_MAP, // 맵 이동 요청
-	CHAT_EVERYONE, // 해당 맵의 모든 인원에게 채팅 (다른 종류의 채팅은 더 생각해보자.)
+	SIGNIN,						// 로그인
+	SIGNUP,						// 회원가입
+	MODIFY_PW,					// 비밀번호 변경
+	GET_CHAR_LIST,				// 해당 유저의 캐릭터 코드 리스트 요청 (로그인 이후 사용해야함)
+	GET_CHAR_INFO,				// 특정 캐릭터 코드에 맞는 캐릭터 정보 요청
+	RESERVE_CHAR_NAME,			// 캐릭터 생성 시 닉네임을 입력할 경우 미리 예약을 건 후, 가능한 닉네임인 경우 사용할 지 여부를 선택한다.
+	CANCEL_CHAR_NAME_RESERVE,	// RESERVE_CHAR_NAME으로 예약한 닉네임을 취소한다.
+	CREATE_CHAR,				// 캐릭터 생성 결정. DB에 캐릭터 정보를 기록한다.
+	SELECT_CHAR,				// 해당 캐릭터 접속
+	PERFORM_SKILL,				// 스킬 사용
+	GET_OBJECT,					// 맵에 존재하는 아이템 습득
+	BUY_ITEM,					// 상점 이용
+	DROP_ITEM,					// 인벤토리의 아이템을 버리고 맵에 생성
+	USE_ITEM,					// 인벤토리의 아이템 사용
+	MOVE_MAP,					// 맵 이동 요청
+	CHAT_EVERYONE,				// 해당 맵의 모든 인원에게 채팅 (다른 종류의 채팅은 더 생각해보자.)
 
-	POS_INFO, // 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
-	LAST = POS_INFO // enum class가 수정되면 마지막 원소로 지정할 것
+	POS_INFO,					// 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
+	LAST = POS_INFO				// enum class가 수정되면 마지막 원소로 지정할 것
 };
 
 enum class RESULTCODE
 {
+	// -----유저의 요청에 대한 응답-----
+
 	SUCCESS,
 	WRONG_PARAM,					// 요청번호와 맞지 않는 파라미터
 	SYSTEM_FAIL,					// 시스템의 문제
@@ -66,8 +68,17 @@ enum class RESULTCODE
 	WRONG_ORDER,					// 요청이 상황에 맞지 않음
 	MODIFIED_MAPCODE,				// 해당 요청이 들어올 때의 맵코드와 현재 서버가 가지고 있는 해당 유저의 맵코드가 상이함.
 	REQ_FAIL,						// 현재 조건에 맞지 않아 실행이 실패함 (이미 사라진 아이템 등..)
-	SEND_INFO,						// 해당 유저의 요청에 의해 전달된 정보가 아닌 정보전달 (채팅, 맵변화, 다른플레이어 상호작용...)
-	UNDEFINED						// 알수없는 오류
+	UNDEFINED,						// 알수없는 오류
+	
+	// -----이하 해당 유저의 요청에 의해 전달된 정보가 아닌 정보전달 -----
+	// (채팅, 맵변화, 다른플레이어 상호작용...)
+
+	SEND_INFO_POS,					// 타 플레이어의 위치정보
+	SEND_INFO_PERFORM_SKILL,		// 타 플레이어의 스킬 발동 정보
+	SEND_INFO_GET_DAMAGE,			// 타 플레이어의 피격 정보
+	SEND_INFO_MONSTER_DESPAWN,		// 해당 맵의 몬스터 사망 정보
+	SEND_INFO_MONSTER_GET_DAMAGE,	// 해당 맵의 몬스터 피격 정보
+	SEND_INFO_MONSTER_CREATED,		// 해당 맵의 몬스터 생성 정보
 };
 
 struct ReqMessage
@@ -85,7 +96,6 @@ struct ResMessage
 };
 
 // ----- client side data
-
 
 struct SignInParameter
 {
@@ -186,8 +196,8 @@ struct PosInfoParameter
 };
 
 // ----- server side data
-
 // 굳이 응답이라기 보다는 서버->클라이언트의 정보전달을 의미한다.
+
 struct PosInfoResponse
 {
 	int charcode;
@@ -201,9 +211,22 @@ struct PerformSkillInfoResponse
 	int skillcode;
 };
 
+struct GetDamageResponse
+{
+	int charcode;
+	int damage;
+};
+
 struct MonsterDespawnResponse
 {
 	int monsteridx;
+};
+
+struct MonsterGetDamageResponse
+{
+	int monsteridx;
+	int damage[16]; // 16줄까지 표시할까?
+	// 크리티컬 시스템을 추가할까?
 };
 
 struct CreateObjectResponse
@@ -257,7 +280,11 @@ public:
 	bool ToCharInfo(const std::string& jsonStr_, CharInfo& out_)
 	{
 		rapidjson::Document doc;
-		doc.Parse(jsonStr_.c_str());
+		if (doc.Parse(jsonStr_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToCharInfo : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
 
 		if (doc.HasMember("Type") && doc["Type"].IsString() && strcmp(doc["Type"].GetString(), "CharInfo") == 0)
 		{
@@ -463,11 +490,13 @@ public:
 	bool ToReqMessage(const std::string& str_, ReqMessage& out_)
 	{
 		rapidjson::Document doc;
-		if (!doc.Parse(str_.c_str()).HasParseError())
+		if (doc.Parse(str_.c_str()).HasParseError())
 		{
 			std::cerr << "Json::ToReqMessage : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
 			return false;
 		}
+
+		std::cout << "1\n";
 
 		if (!doc.HasMember("Type") || !doc["Type"].IsInt() ||
 			!doc.HasMember("ReqNo") || !doc["ReqNo"].IsInt() ||
@@ -743,7 +772,7 @@ public:
 	bool ToDropItemParameter(const std::string& str_, DropItemParameter& out_)
 	{
 		rapidjson::Document doc;
-		if (!doc.Parse(str_.c_str()).HasParseError())
+		if (doc.Parse(str_.c_str()).HasParseError())
 		{
 			std::cerr << "Json::ToDropItemParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
 			return false;
@@ -767,7 +796,7 @@ public:
 	bool ToUseItemParameter(const std::string& str_, UseItemParameter& out_)
 	{
 		rapidjson::Document doc;
-		if (!doc.Parse(str_.c_str()).HasParseError())
+		if (doc.Parse(str_.c_str()).HasParseError())
 		{
 			std::cerr << "Json::ToUseItemParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
 			return false;
@@ -824,7 +853,7 @@ public:
 	bool ToPosInfoParameter(const std::string& str_, PosInfoParameter& out_)
 	{
 		rapidjson::Document doc;
-		if (!doc.Parse(str_.c_str()).HasParseError())
+		if (doc.Parse(str_.c_str()).HasParseError())
 		{
 			std::cerr << "Json::ToPosInfoParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
 			return false;

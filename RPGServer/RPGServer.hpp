@@ -102,6 +102,11 @@ private:
 
 		m_ReqHandler.HandleReq(index_, str);
 
+		PacketData* packet = new PacketData();
+
+		packet->Init(index_, str);
+		SendMsg(packet);
+
 		return;
 	}
 

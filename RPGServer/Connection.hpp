@@ -1,8 +1,21 @@
 #pragma once
 
 #include "PacketData.hpp"
+#include "RingBuffer.hpp"
 #include <queue>
 #include <mutex>
+
+#define GET_ACCEPTEX_SOCKADDRS( lpOutputBuffer, dwBytesReceived, lpLocalAddress, lpRemoteAddress ) \
+    do { \
+        sockaddr* pLocal = (sockaddr*)lpLocalAddress; \
+        sockaddr* pRemote = (sockaddr*)lpRemoteAddress; \
+        int localSize = sizeof(sockaddr_in); \
+        int remoteSize = sizeof(sockaddr_in); \
+        memcpy(pLocal, lpOutputBuffer, localSize); \
+        memcpy(pRemote, lpOutputBuffer + localSize, remoteSize); \
+    } while (0)
+
+const int MAX_RINGBUFFER_SIZE = 1000;
 
 class Connection
 {
@@ -11,16 +24,12 @@ public:
 	{
 		Init();
 		BindAcceptEx();
+		m_SendBuffer.Init(MAX_RINGBUFFER_SIZE);
 	}
 
 	virtual ~Connection()
 	{
-		std::lock_guard<std::mutex> guard(m);
-		while (!m_SendQueue.empty())
-		{
-			delete m_SendQueue.front();
-			m_SendQueue.pop();
-		}
+
 	}
 
 	void Init()
@@ -96,19 +105,22 @@ public:
 
 	void SendMsg(PacketData* pData_)
 	{
+		if (pData_ == nullptr)
+		{
+			return;
+		}
+
 		if (m_IsConnected.load() == false)
 		{
 			delete pData_;
 			return;
 		}
 
-		pData_->SetOverlapped();
+		std::lock_guard<std::mutex> guard(m_mutex);
 
-		std::lock_guard<std::mutex> guard(m);
+		m_SendBuffer.enqueue(pData_->GetBlock()->pData, pData_->GetBlock()->dataSize);
 
-		m_SendQueue.push(pData_);
-
-		if (m_SendQueue.size() == 1)
+		if (m_SendBuffer.Size() == pData_->GetBlock()->dataSize)
 		{
 			SendIO();
 		}
@@ -118,16 +130,23 @@ public:
 
 	bool SendIO()
 	{
-		PacketData* packet = m_SendQueue.front();
+		int datasize = m_SendBuffer.dequeue(m_SendingBuffer, MAX_SOCKBUF);
+
+		ZeroMemory(&m_SendOverlapped, sizeof(stOverlappedEx));
+
+		m_SendOverlapped.m_wsaBuf.len = datasize;
+		m_SendOverlapped.m_wsaBuf.buf = m_SendingBuffer;
+		m_SendOverlapped.m_eOperation = eIOOperation::SEND;
+		m_SendOverlapped.m_userIndex = m_ClientIndex;
 
 		DWORD dwRecvNumBytes = 0;
 
 		auto result = WSASend(m_ClientSocket,
-			&(packet->GetOverlapped().m_wsaBuf),
+			&(m_SendOverlapped.m_wsaBuf),
 			1,
 			&dwRecvNumBytes,
 			0,
-			(LPWSAOVERLAPPED) & (packet->GetOverlapped()),
+			(LPWSAOVERLAPPED) & (m_SendOverlapped),
 			NULL);
 
 		if (result == SOCKET_ERROR && WSAGetLastError() != ERROR_IO_PENDING)
@@ -138,22 +157,16 @@ public:
 		return true;
 	}
 
-	PacketData* SendCompleted()
+	void SendCompleted()
 	{
-		std::lock_guard<std::mutex> guard(m);
+		std::lock_guard<std::mutex> guard(m_mutex);
 
-		PacketData* ret = m_SendQueue.front();
-		m_SendQueue.pop();
-
-		// 전송처리하던 스레드가 이어서 전달하여 문맥교환 비용을 줄인다.
-		if (!m_SendQueue.empty())
+		if (!m_SendBuffer.IsEmpty())
 		{
 			SendIO();
 		}
 
-		ret->Clear();
-
-		return ret;
+		return;
 	}
 
 	void Close(bool bIsForce_ = false)
@@ -177,22 +190,33 @@ public:
 
 	bool GetIP(uint32_t& out_)
 	{
-		struct sockaddr_in clientAddr;
-		int addrLen = sizeof(clientAddr);
+		setsockopt(m_ClientSocket, SOL_SOCKET, SO_UPDATE_ACCEPT_CONTEXT, (char*)&m_ListenSocket, (int)sizeof(SOCKET));
 
-		if (m_ClientSocket == INVALID_SOCKET)
+		SOCKADDR* l_addr = nullptr; SOCKADDR* r_addr = nullptr; int l_size = 0, r_size = 0;
+
+		GetAcceptExSockaddrs(mAcceptBuf,
+			0,
+			sizeof(SOCKADDR_STORAGE) + 16,
+			sizeof(SOCKADDR_STORAGE) + 16,
+			&l_addr,
+			&l_size,
+			&r_addr,
+			&r_size
+		);
+
+		SOCKADDR_IN address = { 0 };
+		int addressSize = sizeof(address);
+
+		int nRet = getpeername(m_ClientSocket, (struct sockaddr*)&address, &addressSize);
+
+		if (nRet)
 		{
-			std::cerr << "Connection::GetIP : invalid socket.\n";
+			std::cerr << "Connection::GetIP : getpeername Failed\n";
+
 			return false;
 		}
 
-		if (getpeername(m_ClientSocket, reinterpret_cast<struct sockaddr*>(&clientAddr), &addrLen) == SOCKET_ERROR)
-		{
-			std::cerr << "Connection::GetIP : getpeername Failed " << WSAGetLastError() << '\n';
-			return false;
-		}
-
-		out_ = clientAddr.sin_addr.S_un.S_addr;
+		out_ = address.sin_addr.S_un.S_addr;
 
 		return true;
 	}
@@ -239,14 +263,18 @@ private:
 
 	SOCKET m_ListenSocket;
 	SOCKET m_ClientSocket;
-	stOverlappedEx m_RecvOverlapped;
 
 	std::atomic<bool> m_IsConnected;
 	unsigned short m_ClientIndex;
 
-	std::mutex m;
-	std::queue<PacketData*> m_SendQueue;
+	std::mutex m_mutex;
 
 	char mAcceptBuf[64];
+
+	stOverlappedEx m_RecvOverlapped;
 	char mRecvBuf[MAX_SOCKBUF];
+
+	RingBuffer m_SendBuffer;
+	char m_SendingBuffer[MAX_SOCKBUF];
+	stOverlappedEx m_SendOverlapped;
 };

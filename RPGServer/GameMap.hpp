@@ -62,6 +62,7 @@ namespace RPG
 			{
 				if (m_Monsters[idx].Spawn())
 				{
+					// 소환 정보 전달
 					bIsSpawned = true;
 				}
 			}
