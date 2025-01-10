@@ -50,6 +50,7 @@
 #include "MapManager.hpp"
 #include "ReqHandler.hpp"
 #include <functional>
+#include <stdexcept>
 
 class RPGServer : IOCPServer
 {
@@ -96,16 +97,48 @@ private:
 	{
 		// 링버퍼로 구조를 바꾼다고 하면 받은 데이터를 패킷 크기에 맞게 재단하여 ReqHandler에 요청해야한다.
 		// 패킷의 크기보다 받은 데이터가 적다면 보관할 장소도 필요하다. (아마도 Connection에 저장하는게 좋겠지?)
+		
 
 		std::string str;
 		str.assign(pData_, ioSize_);
 
-		m_ReqHandler.HandleReq(index_, str);
+		char remain[1000] = { 0 };
+		int len = GetRemainConnRecvBuffer(index_, remain, 1000);
 
-		PacketData* packet = new PacketData();
+		if (len != 0)
+		{
+			std::string tmpstr;
+			tmpstr.assign(remain, len);
 
-		packet->Init(index_, str);
-		SendMsg(packet);
+			str = tmpstr + str;
+		}
+
+		std::string req;
+
+		if (!CheckStringSize(str, req))
+		{
+			//std::cout << "PartialMsg : " << str << '\n';
+			strcpy_s(remain, str.c_str());
+			StoreRemainMsg(index_, remain, str.length());
+			return;
+		}
+
+		if (!str.empty())
+		{
+			strcpy_s(remain, str.c_str());
+			StoreRemainMsg(index_, remain, str.length());
+		}
+
+		if(!m_ReqHandler.HandleReq(index_, req))
+		{
+			//std::cerr << "RPGServer::OnReceive : Failed to HandleReq\n";
+			return;
+		}
+		else
+		{
+			//std::cout << "RPGServer::OnReceive : " << req << '\n';
+		}
+
 
 		return;
 	}
@@ -115,6 +148,46 @@ private:
 		m_ReqHandler.HandleLogOut(index_);
 
 		return;
+	}
+
+	bool CheckStringSize(std::string& str_, std::string& out_)
+	{
+		if (str_[0] != '[')
+		{
+			std::cerr << "RPGServer::CheckStringSize : Not Started with [\n";
+			std::cerr << "RPGServer::CheckStringSize : string : " << str_ << '\n';
+			return false;
+		}
+
+		size_t pos = str_.find(']');
+
+		if (pos == std::string::npos)
+		{
+			return false;
+		}
+
+		try
+		{
+			std::string header = str_.substr(1, pos);
+			int size = std::stoi(header);
+			if (str_.size() > pos + size)
+			{
+				out_ = str_.substr(pos + 1, size);
+				str_ = str_.substr(pos + size + 1);
+
+				return true;
+			}
+		}
+		catch (std::invalid_argument& e)
+		{
+			std::cerr << "RPGServer::CheckStringSize : " << e.what();
+		}
+		catch (...)
+		{
+			std::cerr << "RPGServer::CheckStringSize : Some Err\n";
+		}
+
+		return false;
 	}
 
 	const int m_BindPort;

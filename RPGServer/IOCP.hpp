@@ -99,6 +99,18 @@ public:
 		return;
 	}
 
+	int GetRemainConnRecvBuffer(const int connectionIndex_, char* out_, int maxsize_)
+	{
+		Connection* conn = GetConnection(connectionIndex_);
+		return conn->GetPartialMessage(out_, maxsize_);
+	}
+
+	bool StoreRemainMsg(const int connectionIndex_, char* msg_, int size_)
+	{
+		Connection* conn = GetConnection(connectionIndex_);
+		return conn->StorePartialMessage(msg_, size_);
+	}
+
 private:
 	bool CreateListenSocket(int nBindPort_)
 	{

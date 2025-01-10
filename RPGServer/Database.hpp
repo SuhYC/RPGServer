@@ -79,32 +79,19 @@ public:
 			return eReturnCode::SYSTEM_ERROR;
 		}
 
-		SQLPrepare(hstmt, (SQLWCHAR*)
-			L"IF NOT EXISTS (SELECT 1 FROM LOGINDATA WHERE ID = ?) "
+		std::wstring wid = std::wstring(id_.begin(), id_.end());
+		std::wstring wpw = std::wstring(pw_.begin(), pw_.end());
+		std::wstring whint = std::wstring(hint_.begin(), hint_.end());
+		std::wstring wans = std::wstring(ans_.begin(), ans_.end());
+
+		SQLWCHAR query[1024] = { 0 };
+		swprintf((wchar_t*)query, 1024,
+			L"IF NOT EXISTS (SELECT 1 FROM LOGINDATA WHERE USERID = N'%s') "
 			L"BEGIN "
-			L"    INSERT INTO LOGINDATA (USERID, PASSWORD, QUESTNO, HINT, ANSWER) VALUES (?, ?, ?, ?, ?); "
-			L"    SELECT 'S' AS Result; "
-			L"END "
-			L"ELSE "
-			L"BEGIN "
-			L"    SELECT 'F' AS Result; "
-			L"END", SQL_NTS);
+			L"    INSERT INTO LOGINDATA (USERID, PASSWORD, QUESTNO, HINT, ANSWER) VALUES (N'%s', N'%s', %d, N'%s', N'%s'); "
+			L"END ", wid.c_str(), wid.c_str(), wpw.c_str(), questno_, whint.c_str(), wans.c_str());
 
-		SQLLEN idLength = id_.length();
-		SQLLEN pwLength = pw_.length();
-		SQLLEN hintLength = hint_.length();
-		SQLLEN ansLength = ans_.length();
-
-		int questno = questno_;
-
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
-		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
-		SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)pw_.c_str(), 0, &pwLength);
-		SQLBindParameter(hstmt, 4, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &questno, 0, NULL);
-		SQLBindParameter(hstmt, 5, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)hint_.c_str(), 0, &hintLength);
-		SQLBindParameter(hstmt, 6, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)ans_.c_str(), 0, &ansLength);
-
-		SQLRETURN retCode = SQLExecute(hstmt);
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
@@ -114,43 +101,15 @@ public:
 			return eReturnCode::SYSTEM_ERROR;
 		}
 
-		SQLCHAR result_message[2]; // 'S' or 'F'
-		SQLLEN resultlen;
-		retCode = SQLFetch(hstmt);
+		SQLLEN rowCount = 0;
+		SQLRowCount(hstmt, &rowCount);
 
-		// SQLFetch Failed
-		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		if (rowCount == 1)
 		{
-			ReleaseHandle(hstmt);
-			std::cerr << "Database::SIGNUP : Failed to Fetch\n";
-			return eReturnCode::SYSTEM_ERROR;
-		}
-
-		SQLRETURN dataRet = SQLGetData(hstmt, 1, SQL_C_CHAR, result_message, sizeof(result_message) / sizeof(result_message[0]), &resultlen);
-				
-		// SQLGetData Failed
-		if (dataRet != SQL_SUCCESS && dataRet != SQL_SUCCESS_WITH_INFO)
-		{
-			ReleaseHandle(hstmt);
-			std::wcerr << L"Database::SIGNUP : Failed to Get Data\n";
-			return eReturnCode::SYSTEM_ERROR;
-		}
-
-		
-		if (DB_DEBUG)
-		{
-			std::wcout << result_message[0] << "\n";
-		}
-
-		if (result_message[0] == 'S')
-		{
-			ReleaseHandle(hstmt);
 			return eReturnCode::SIGNUP_SUCCESS;
 		}
-		// 'F' -> Failed to INSERT : Already In Use
 		else
 		{
-			ReleaseHandle(hstmt);
 			return eReturnCode::SIGNUP_ALREADY_IN_USE;
 		}
 	}

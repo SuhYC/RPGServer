@@ -496,17 +496,15 @@ public:
 			return false;
 		}
 
-		std::cout << "1\n";
-
-		if (!doc.HasMember("Type") || !doc["Type"].IsInt() ||
-			!doc.HasMember("ReqNo") || !doc["ReqNo"].IsInt() ||
+		if (!doc.HasMember("type") || !doc["type"].IsInt() ||
+			!doc.HasMember("reqNo") || !doc["reqNo"].IsInt() ||
 			!doc.HasMember("msg") || !doc["msg"].IsString())
 		{
 			std::cerr << "Json::ToReqMessage : Incorrect Format.\n";
 			return false;
 		}
 
-		int type = doc["Type"].GetInt();
+		int type = doc["type"].GetInt();
 
 		if (type > static_cast<int>(MessageType::LAST) || type < static_cast<int>(MessageType::SIGNIN))
 		{
@@ -515,7 +513,7 @@ public:
 		}
 
 		out_.type = static_cast<MessageType>(type);
-		out_.reqNo = doc["ReqNo"].GetInt();
+		out_.reqNo = doc["reqNo"].GetInt();
 		out_.msg = std::string(doc["msg"].GetString());
 
 		return true;

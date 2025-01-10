@@ -77,13 +77,13 @@ public:
 	}
 
 	// 수행 결과로 의심스러운 동작이 검출된다면 따로 기록하는것도 좋겠다.
-	void HandleReq(const int userindex_, std::string& Req_)
+	bool HandleReq(const int userindex_, std::string& Req_)
 	{
 		ReqMessage msg;
 		if (!m_JsonMaker.ToReqMessage(Req_, msg))
 		{
 			// ReqMessage포맷조차 안맞췄다고..?
-			return;
+			return false;
 		}
 
 		auto itr = Actions.find(msg.type);
@@ -91,13 +91,13 @@ public:
 		if (itr == Actions.end())
 		{
 			std::cerr << "ReqHandler::HandleReq : Not Defined ReqType.\n";
-			return;
+			return false;
 		}
 
 		// 함수포인터를 통한 사용
 		RESULTCODE eRet = (this->*(itr->second))(userindex_, msg.reqNo, msg.msg);
 
-		return;
+		return true;
 	}
 
 	void HandleLogOut(const int connidx_)
@@ -659,6 +659,7 @@ private:
 		if (!SendMsgFunc(packet))
 		{
 			// 송신 실패
+			std::cerr << "ReqHandler::SendResultMsg : Failed to Send\n";
 			return RESULTCODE::UNDEFINED;
 		}
 

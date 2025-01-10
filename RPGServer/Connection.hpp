@@ -25,6 +25,7 @@ public:
 		Init();
 		BindAcceptEx();
 		m_SendBuffer.Init(MAX_RINGBUFFER_SIZE);
+		m_RecvBuffer.Init(MAX_RINGBUFFER_SIZE);
 	}
 
 	virtual ~Connection()
@@ -130,7 +131,8 @@ public:
 
 	bool SendIO()
 	{
-		int datasize = m_SendBuffer.dequeue(m_SendingBuffer, MAX_SOCKBUF);
+		ZeroMemory(m_SendingBuffer, MAX_SOCKBUF);
+		int datasize = m_SendBuffer.dequeue(m_SendingBuffer, MAX_SOCKBUF-1);
 
 		ZeroMemory(&m_SendOverlapped, sizeof(stOverlappedEx));
 
@@ -153,6 +155,8 @@ public:
 		{
 			return false;
 		}
+
+		//std::cout << "Connection::SendIO : SendMsg : " << m_SendingBuffer << '\n';
 
 		return true;
 	}
@@ -224,6 +228,19 @@ public:
 	char* RecvBuffer() { return mRecvBuf; }
 	unsigned short GetIndex() { return m_ClientIndex; }
 
+	bool StorePartialMessage(char* str_, int size_)
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+
+		return m_RecvBuffer.enqueue(str_, size_);
+	}
+
+	int GetPartialMessage(char* out_, int maxsize_)
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+		return m_RecvBuffer.dequeue(out_, maxsize_);
+	}
+
 private:
 	bool BindAcceptEx()
 	{
@@ -275,6 +292,7 @@ private:
 	char mRecvBuf[MAX_SOCKBUF];
 
 	RingBuffer m_SendBuffer;
+	RingBuffer m_RecvBuffer;
 	char m_SendingBuffer[MAX_SOCKBUF];
 	stOverlappedEx m_SendOverlapped;
 };
