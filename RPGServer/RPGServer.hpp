@@ -84,6 +84,7 @@ public:
 	void End()
 	{
 		EndServer();
+		m_ReqHandler.ClearSession();
 	}
 
 private:
@@ -131,12 +132,12 @@ private:
 
 		if(!m_ReqHandler.HandleReq(index_, req))
 		{
-			//std::cerr << "RPGServer::OnReceive : Failed to HandleReq\n";
+			std::cerr << "RPGServer::OnReceive : Failed to HandleReq\n";
 			return;
 		}
 		else
 		{
-			//std::cout << "RPGServer::OnReceive : " << req << '\n';
+			std::cout << "RPGServer::OnReceive : " << req << '\n';
 		}
 
 

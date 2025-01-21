@@ -252,11 +252,14 @@ public:
 
 		// int Members
 		doc.AddMember("CharNo", pInfo_.CharNo, allocator);
+		doc.AddMember("ClassCode", pInfo_.ClassCode, allocator);
 		doc.AddMember("Level", pInfo_.Level, allocator);
 		doc.AddMember("Experience", pInfo_.Experience, allocator);
 		doc.AddMember("StatPoint", pInfo_.StatPoint, allocator);
 		doc.AddMember("HealthPoint", pInfo_.HealthPoint, allocator);
 		doc.AddMember("ManaPoint", pInfo_.ManaPoint, allocator);
+		doc.AddMember("CurrentHealth", pInfo_.CurrentHealth, allocator);
+		doc.AddMember("CurrentMana", pInfo_.CurrentMana, allocator);
 		doc.AddMember("Strength", pInfo_.Strength, allocator);
 		doc.AddMember("Dexterity", pInfo_.Dexterity, allocator);
 		doc.AddMember("Intelligence", pInfo_.Intelligence, allocator);
@@ -298,11 +301,14 @@ public:
 
 			// int Members
 			out_.CharNo = doc["CharNo"].GetInt();
+			out_.ClassCode = doc["ClassCode"].GetInt();
 			out_.Level = doc["Level"].GetInt();
 			out_.Experience = doc["Experience"].GetInt();
 			out_.StatPoint = doc["StatPoint"].GetInt();
 			out_.HealthPoint = doc["StatPoint"].GetInt();
 			out_.ManaPoint = doc["ManaPoint"].GetInt();
+			out_.CurrentHealth = doc["CurrentHealth"].GetInt();
+			out_.CurrentMana = doc["CurrentMana"].GetInt();
 			out_.Strength = doc["Strength"].GetInt();
 			out_.Dexterity = doc["Dexterity"].GetInt();
 			out_.Intelligence = doc["Intelligence"].GetInt();

@@ -47,10 +47,11 @@ public:
 		m_CharInfoPool = std::make_unique<MemoryPool<CharInfo>>(CHARINFO_MEMORY_POOL_COUNT);
 		m_CharListPool = std::make_unique<MemoryPool<CharList>>(CHARLIST_MEMORY_POOL_COUNT);
 		MakeReservedWordList();
-		MakePriceTable();
-		MakeSalesList();
-		MakeMapEdgeList();
-		MakeMapNPCInfo();
+
+		//MakePriceTable();
+		//MakeSalesList();
+		//MakeMapEdgeList();
+		//MakeMapNPCInfo();
 	}
 
 	virtual ~Database()
@@ -84,8 +85,8 @@ public:
 		std::wstring whint = std::wstring(hint_.begin(), hint_.end());
 		std::wstring wans = std::wstring(ans_.begin(), ans_.end());
 
-		SQLWCHAR query[1024] = { 0 };
-		swprintf((wchar_t*)query, 1024,
+		SQLWCHAR query[512] = { 0 };
+		swprintf((wchar_t*)query, 512,
 			L"IF NOT EXISTS (SELECT 1 FROM LOGINDATA WHERE USERID = N'%s') "
 			L"BEGIN "
 			L"    INSERT INTO LOGINDATA (USERID, PASSWORD, QUESTNO, HINT, ANSWER) VALUES (N'%s', N'%s', %d, N'%s', N'%s'); "
@@ -132,17 +133,21 @@ public:
 			return CLIENT_NOT_CERTIFIED;
 		}
 
-		SQLLEN idLength = id_.length();
-		SQLLEN pwLength = pw_.length();
+		std::wstring wid = std::wstring(id_.begin(), id_.end());
+		std::wstring wpw = std::wstring(pw_.begin(), pw_.end());
 
-		SQLPrepare(hstmt, (SQLWCHAR*)
-			L"SELECT USERCODE FROM LOGINDATA WHERE ID = ? AND PASSWORD = ?; "
-			, SQL_NTS);
+		SQLWCHAR query[256] = { 0 };
+		swprintf((wchar_t*)query, 256,
+			L"SELECT USERNO FROM LOGINDATA WHERE USERID = N'%s' AND PASSWORD = N'%s' "
+			, wid.c_str(), wpw.c_str());
 
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLCHAR*)id_.c_str(), 0, &idLength);
-		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_WCHAR, SQL_WCHAR, 0, 0, (SQLCHAR*)pw_.c_str(), 0, &pwLength);
+		if (DB_DEBUG)
+		{
+			std::cout << "Database::SignIn : id : " << id_ << ", pw : " << pw_ << '\n';
+			std::wcout << "Database::SignIn : query : " << query << '\n';
+		}
 
-		SQLRETURN retCode = SQLExecute(hstmt);
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
@@ -153,12 +158,24 @@ public:
 			return CLIENT_NOT_CERTIFIED;
 		}
 
-		long result = 0;
+		SQLINTEGER result = 0;
+		
+		retCode = SQLBindCol(hstmt, 1, SQL_C_SLONG, &result, 0, nullptr);
+
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"DB::SIGNIN : Failed to Bind Column\n";
+
+			ReleaseHandle(hstmt);
+			return CLIENT_NOT_CERTIFIED;
+		}
+
 		retCode = SQLFetch(hstmt);
 
 		// CLIENT_NOT_CERTIFIED : WRONG ID OR PW
 		if (retCode == SQL_NO_DATA)
 		{
+			std::wcerr << L"DB::SIGNIN : NODATA\n";
 			ReleaseHandle(hstmt);
 			return CLIENT_NOT_CERTIFIED;
 		}
@@ -167,17 +184,6 @@ public:
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
 			std::wcerr << L"DB::SIGNIN : Failed to Fetch\n";
-			ReleaseHandle(hstmt);
-			return CLIENT_NOT_CERTIFIED;
-		}
-
-		SQLLEN num_rows;
-		SQLRETURN dataRet = SQLGetData(hstmt, 1, SQL_C_LONG, &result, sizeof(result), &num_rows);
-				
-		// SQLGetData Failed
-		if (dataRet != SQL_SUCCESS && dataRet != SQL_SUCCESS_WITH_INFO)
-		{
-			std::wcerr << L"DB::SIGNIN : Failed to Get Data\n";
 			ReleaseHandle(hstmt);
 			return CLIENT_NOT_CERTIFIED;
 		}
@@ -218,21 +224,26 @@ public:
 
 		HANDLE hstmt = m_Pool->Allocate();
 
-		SQLPrepare(hstmt, (SQLWCHAR*)
-			L"SELECT CHARNAME, LV, EXPERIENCE, STATPOINT, HEALTHPOINT, MANAPOINT, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE FROM CHARINFO WHERE CHARNO = ?;",
-			SQL_NTS);
+		SQLWCHAR query[512] = { 0 };
+		swprintf((wchar_t*)query, 512,
+			L"SELECT CHARNAME, CLASS_CODE, LV, EXPERIENCE, STAT_POINT, HEALTH_POINT, MANA_POINT, CURRENT_HEALTH, CURRENT_MANA, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE "
+			L"FROM CHARINFO "
+			L"WHERE CHARNO = %d; "
+			, charNo_);
 
-		int paramValue = charNo_;
-		SQLLEN paramValueLength = 0;
+		if (DB_DEBUG)
+		{
+			std::cout << "Database::GetCharInfoJsonStr : No. : " << charNo_ << '\n';
+			std::wcout << "Database::GetCharInfoJsonStr : query : " << query << '\n';
+		}
 
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &paramValue, 0, &paramValueLength);
-
-		SQLRETURN retCode = SQLExecute(hstmt);
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
-			std::wcerr << L"Database::GetCharInfo : Failed to Execute\n";
+			PrintError(hstmt);
+			std::wcerr << L"Database::GetCharInfoJsonStr : Failed to Execute\n";
 			ReleaseHandle(hstmt);
 			return std::string();
 		}
@@ -242,7 +253,7 @@ public:
 		// SQLFetch Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
-			std::wcerr << L"Database::GetCharInfo : Failed to Fetch\n";
+			std::wcerr << L"Database::GetCharInfoJsonStr : Failed to Fetch\n";
 			ReleaseHandle(hstmt);
 			return std::string();
 		}
@@ -251,26 +262,31 @@ public:
 
 		if (pCharInfo == nullptr)
 		{
-			std::cerr << "Database::GetCharInfo : Failed to Allocate Info Instance\n";
+			std::cerr << "Database::GetCharInfoJsonStr : Failed to Allocate Info Instance\n";
 			ReleaseHandle(hstmt);
 			return std::string();
 		}
 
 		SQLLEN len;
 		SQLGetData(hstmt, 1, SQL_C_CHAR, pCharInfo->CharName, sizeof(pCharInfo->CharName) / sizeof(pCharInfo->CharName[0]), &len);
-		SQLGetData(hstmt, 2, SQL_C_LONG, &(pCharInfo->Level), 0, &len);
-		SQLGetData(hstmt, 3, SQL_C_LONG, &(pCharInfo->Experience), 0, &len);
-		SQLGetData(hstmt, 4, SQL_C_LONG, &(pCharInfo->StatPoint), 0, &len);
-		SQLGetData(hstmt, 5, SQL_C_LONG, &(pCharInfo->HealthPoint), 0, &len);
-		SQLGetData(hstmt, 6, SQL_C_LONG, &(pCharInfo->ManaPoint), 0, &len);
-		SQLGetData(hstmt, 7, SQL_C_LONG, &(pCharInfo->Strength), 0, &len);
-		SQLGetData(hstmt, 8, SQL_C_LONG, &(pCharInfo->Dexterity), 0, &len);
-		SQLGetData(hstmt, 9, SQL_C_LONG, &(pCharInfo->Intelligence), 0, &len);
-		SQLGetData(hstmt, 10, SQL_C_LONG, &(pCharInfo->Mentality), 0, &len);
-		SQLGetData(hstmt, 11, SQL_C_LONG, &(pCharInfo->Gold), 0, &len);
-		SQLGetData(hstmt, 12, SQL_C_LONG, &(pCharInfo->LastMapCode), 0, &len);
+		SQLGetData(hstmt, 2, SQL_C_LONG, &(pCharInfo->ClassCode), 0, &len);
+		SQLGetData(hstmt, 3, SQL_C_LONG, &(pCharInfo->Level), 0, &len);
+		SQLGetData(hstmt, 4, SQL_C_LONG, &(pCharInfo->Experience), 0, &len);
+		SQLGetData(hstmt, 5, SQL_C_LONG, &(pCharInfo->StatPoint), 0, &len);
+		SQLGetData(hstmt, 6, SQL_C_LONG, &(pCharInfo->HealthPoint), 0, &len);
+		SQLGetData(hstmt, 7, SQL_C_LONG, &(pCharInfo->ManaPoint), 0, &len);
+		SQLGetData(hstmt, 8, SQL_C_LONG, &(pCharInfo->CurrentHealth), 0, &len);
+		SQLGetData(hstmt, 9, SQL_C_LONG, &(pCharInfo->CurrentMana), 0, &len);
+		SQLGetData(hstmt, 10, SQL_C_LONG, &(pCharInfo->Strength), 0, &len);
+		SQLGetData(hstmt, 11, SQL_C_LONG, &(pCharInfo->Dexterity), 0, &len);
+		SQLGetData(hstmt, 12, SQL_C_LONG, &(pCharInfo->Intelligence), 0, &len);
+		SQLGetData(hstmt, 13, SQL_C_LONG, &(pCharInfo->Mentality), 0, &len);
+		SQLGetData(hstmt, 14, SQL_C_LONG, &(pCharInfo->Gold), 0, &len);
+		SQLGetData(hstmt, 15, SQL_C_LONG, &(pCharInfo->LastMapCode), 0, &len);
 
 		ReleaseHandle(hstmt);
+
+		pCharInfo->CharNo = charNo_;
 
 		m_JsonMaker.ToJsonString(*pCharInfo, ret);
 
@@ -310,17 +326,20 @@ public:
 
 		HANDLE hstmt = m_Pool->Allocate();
 
-		SQLPrepare(hstmt, (SQLWCHAR*)
-			L"SELECT CHARNAME, LV, EXPERIENCE, STATPOINT, HEALTHPOINT, MANAPOINT, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE"
-			L"FROM CHARINFO"
-			L"WHERE CHARNO = ?;", SQL_NTS);
+		SQLWCHAR query[512] = { 0 };
+		swprintf((wchar_t*)query, 512,
+			L"SELECT CHARNAME, CLASS_CODE, LV, EXPERIENCE, STAT_POINT, HEALTH_POINT, MANA_POINT, CURRENT_HEALTH, CURRENT_MANA, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE "
+			L"FROM CHARINFO "
+			L"WHERE CHARNO = %d; "
+			, charNo_);
 
-		int paramValue = charNo_;
-		SQLLEN paramValueLength = 0;
+		if (DB_DEBUG)
+		{
+			std::cout << "Database::GetCharInfo : No. : " << charNo_ << '\n';
+			std::wcout << "Database::GetCharInfo : query : " << query << '\n';
+		}
 
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &paramValue, 0, &paramValueLength);
-
-		SQLRETURN retCode = SQLExecute(hstmt);
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
@@ -342,19 +361,24 @@ public:
 
 		SQLLEN len;
 		SQLGetData(hstmt, 1, SQL_C_CHAR, ret->CharName, sizeof(ret->CharName) / sizeof(ret->CharName[0]), &len);
-		SQLGetData(hstmt, 2, SQL_C_LONG, &(ret->Level), 0, &len);
-		SQLGetData(hstmt, 3, SQL_C_LONG, &(ret->Experience), 0, &len);
-		SQLGetData(hstmt, 4, SQL_C_LONG, &(ret->StatPoint), 0, &len);
-		SQLGetData(hstmt, 5, SQL_C_LONG, &(ret->HealthPoint), 0, &len);
-		SQLGetData(hstmt, 6, SQL_C_LONG, &(ret->ManaPoint), 0, &len);
-		SQLGetData(hstmt, 7, SQL_C_LONG, &(ret->Strength), 0, &len);
-		SQLGetData(hstmt, 8, SQL_C_LONG, &(ret->Dexterity), 0, &len);
-		SQLGetData(hstmt, 9, SQL_C_LONG, &(ret->Intelligence), 0, &len);
-		SQLGetData(hstmt, 10, SQL_C_LONG, &(ret->Mentality), 0, &len);
-		SQLGetData(hstmt, 11, SQL_C_LONG, &(ret->Gold), 0, &len);
-		SQLGetData(hstmt, 12, SQL_C_LONG, &(ret->LastMapCode), 0, &len);
+		SQLGetData(hstmt, 2, SQL_C_LONG, &(ret->ClassCode), 0, &len);
+		SQLGetData(hstmt, 3, SQL_C_LONG, &(ret->Level), 0, &len);
+		SQLGetData(hstmt, 4, SQL_C_LONG, &(ret->Experience), 0, &len);
+		SQLGetData(hstmt, 5, SQL_C_LONG, &(ret->StatPoint), 0, &len);
+		SQLGetData(hstmt, 6, SQL_C_LONG, &(ret->HealthPoint), 0, &len);
+		SQLGetData(hstmt, 7, SQL_C_LONG, &(ret->ManaPoint), 0, &len);
+		SQLGetData(hstmt, 8, SQL_C_LONG, &(ret->CurrentHealth), 0, &len);
+		SQLGetData(hstmt, 9, SQL_C_LONG, &(ret->CurrentMana), 0, &len);
+		SQLGetData(hstmt, 10, SQL_C_LONG, &(ret->Strength), 0, &len);
+		SQLGetData(hstmt, 11, SQL_C_LONG, &(ret->Dexterity), 0, &len);
+		SQLGetData(hstmt, 12, SQL_C_LONG, &(ret->Intelligence), 0, &len);
+		SQLGetData(hstmt, 13, SQL_C_LONG, &(ret->Mentality), 0, &len);
+		SQLGetData(hstmt, 14, SQL_C_LONG, &(ret->Gold), 0, &len);
+		SQLGetData(hstmt, 15, SQL_C_LONG, &(ret->LastMapCode), 0, &len);
 
 		ReleaseHandle(hstmt);
+
+		ret->CharNo = charNo_;
 
 		if (!m_JsonMaker.ToJsonString(*ret, strCharInfo))
 		{
@@ -377,16 +401,24 @@ public:
 	std::string GetCharList(const int userCode_)
 	{
 		HANDLE hstmt = m_Pool->Allocate();
-		SQLPrepare(hstmt, (SQLWCHAR*)
-			L"SELECT CHARNO FROM CHARLIST WHERE USERNO = ?;",
-			SQL_NTS);
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::GetCharList : Invalid handle\n";
+			return "";
+		}
 
-		int paramValue = userCode_;
-		SQLLEN paramLen = 0;
+		SQLWCHAR query[256] = { 0 };
+		swprintf((wchar_t*)query, 256,
+			L"SELECT CHARNO FROM CHARLIST WHERE USERNO = %d; "
+			, userCode_);
 
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &paramValue, 0, &paramLen);
+		if (DB_DEBUG)
+		{
+			std::cout << "Database::GetCharList : usercode : " << userCode_ << '\n';
+			std::wcout << "Database::GetCharList : query : " << query << '\n';
+		}
 
-		SQLRETURN retCode = SQLExecute(hstmt);
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
@@ -397,6 +429,7 @@ public:
 		}
 
 		std::vector<int> charCodes;
+		charCodes.clear();
 		int charCode = 0;
 		SQLLEN len = 0;
 
@@ -418,10 +451,15 @@ public:
 			}
 
 			SQLGetData(hstmt, 1, SQL_C_LONG, &charCode, 0, &len);
+			if (DB_DEBUG)
+			{
+				std::cout << "DB::GetCharList : charcode - {" << charCode << "}\n";
+			}
 			charCodes.push_back(charCode);
 		}
 
 		CharList* pCharList = m_CharListPool->Allocate();
+
 		pCharList->Init(charCodes.size());
 		for (size_t i = 0; i < charCodes.size(); i++)
 		{
@@ -436,9 +474,11 @@ public:
 
 		ReleaseHandle(hstmt);
 
+		std::string ret = m_JsonMaker.ToJsonString(*pCharList);
+
 		ReleaseObject(pCharList);
 
-		return  m_JsonMaker.ToJsonString(*pCharList);
+		return ret;
 	}
 
 	void ReleaseObject(CharInfo* const pObj_)
@@ -689,23 +729,29 @@ public:
 			return false;
 		}
 
-		SQLPrepare(hstmt, (SQLWCHAR*)
+		std::wstring wnick = std::wstring(nickname_.begin(), nickname_.end());
+
+		SQLWCHAR query[128] = { 0 };
+		swprintf((wchar_t*)query, 128,
 			L"SELECT 1 AS RES "
 			L"FROM CHARINFO "
-			L"WHERE CHARNAME = ? ", SQL_NTS);
+			L"WHERE CHARNAME = N'%s' "
+			, wnick.c_str());
 
-		SQLLEN Length = nickname_.length();
+		if (DB_DEBUG)
+		{
+			std::cout << "Database::ReserveNickname : nick : " << nickname_ << '\n';
+			std::wcout << "Database::ReserveNickname : query : " << query << '\n';
+		}
 
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR, 0, 0, (SQLCHAR*)nickname_.c_str(), 0, &Length);
-		
-		SQLRETURN retCode = SQLExecute(hstmt);
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
 			ReleaseHandle(hstmt);
 			m_RedisManager.CancelReserveNickname(nickname_);
-			std::cerr << "Database::SIGNUP : Failed to Execute\n";
+			std::cerr << "Database::ReserveNickname : Failed to Execute\n";
 			return false;
 		}
 
@@ -829,8 +875,11 @@ private:
 	// 사용한 구문핸들의 상태를 초기화하고 재사용할 수 있도록 커넥션풀에 넣는다.
 	void ReleaseHandle(HANDLE stmt_)
 	{
-		SQLCloseCursor(stmt_);
-		m_Pool->Deallocate(stmt_);
+		//SQLCloseCursor(stmt_);
+		SQLFreeStmt(stmt_, SQL_UNBIND); // BIND COL 해제
+		SQLFreeStmt(stmt_, SQL_CLOSE); // 커서 닫고 보류된 결과 해제
+		SQLFreeStmt(stmt_, SQL_RESET_PARAMS); // BIND PARAM 해제
+		m_Pool->Deallocate(stmt_); // 커넥션풀 반환
 
 		return;
 	}
@@ -1134,38 +1183,33 @@ private:
 			return false;
 		}
 
-		SQLRETURN retcode = SQLPrepare(hstmt, (SQLWCHAR*)
-			L"INSERT INTO CHARINFO (CHARNAME, LV, EXPERIENCE, STATPOINT, "
-			L"HEALTHPOINT, MANAPOINT, STRENGTH, DEXTERITY, "
+		std::wstring wnick = std::wstring(charname_.begin(), charname_.end());
+
+		SQLWCHAR query[512] = { 0 };
+		swprintf((wchar_t*)query, 512,
+			L"INSERT INTO CHARINFO (CHARNAME, CLASS_CODE, LV, EXPERIENCE, STAT_POINT, "
+			L"HEALTH_POINT, MANA_POINT, CURRENT_HEALTH, CURRENT_MANA, STRENGTH, DEXTERITY, "
 			L"INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE) "
-			L"VALUES (?, 1, 0, 0, 100, 100, 4, 4, 4, 4, 0, ?) ", SQL_NTS);
+			L"VALUES (N'%s', 1, 1, 0, 0, 100, 100, 100, 100, 4, 4, 4, 4, 0, %d) "
+			, wnick.c_str(), startMapcode_);
 
-		if (retcode != SQL_SUCCESS)
+		if (DB_DEBUG)
 		{
-			std::cerr << "DB::InsertCharInfo : Error Preparing SQL stmt\n";
-			ReleaseHandle(hstmt);
-			return false;
+			std::cout << "Database::InsertCharInfo : nick : " << charname_ << '\n';
+			std::wcout << "Database::InsertCharInfo : query : " << query << '\n';
 		}
 
-		if (SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR,
-			0, 0, (SQLCHAR*)charname_.c_str(), 0, nullptr) != SQL_SUCCESS ||
-			SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER,
-				0, 0, (SQLPOINTER)&startMapcode_, 0, nullptr) != SQL_SUCCESS)
-		{
-			std::cerr << "DB::InsertCharInfo : Error Binding Parameters\n";
-			ReleaseHandle(hstmt);
-			return false;
-		}
-
-		retcode = SQLExecute(hstmt);
-		ReleaseHandle(hstmt);
-
+		SQLRETURN retcode = SQLExecDirect(hstmt, query, SQL_NTS);
+		
 		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
 		{
+			PrintError(hstmt);
 			std::cerr << "DB::InsertCharInfo : Failed to Execute\n";
+			ReleaseHandle(hstmt);
 			return false;
 		}
 
+		ReleaseHandle(hstmt);
 		return true;
 	}
 
@@ -1178,31 +1222,25 @@ private:
 			return -1;
 		}
 
-		SQLRETURN retcode = SQLPrepare(hstmt, (SQLWCHAR*)
+		std::wstring wnick = std::wstring(charname_.begin(), charname_.end());
+
+		SQLWCHAR query[512] = { 0 };
+		swprintf((wchar_t*)query, 512,
 			L"SELECT CHARNO "
 			L"FROM CHARINFO "
-			L"WHERE CHARNAME = ? ", SQL_NTS);
+			L"WHERE CHARNAME = N'%s' "
+			, wnick.c_str());
 
-		if (retcode != SQL_SUCCESS)
+		if (DB_DEBUG)
 		{
-			std::cerr << "DB::InsertCharInfo : Error Preparing SQL stmt\n";
-			ReleaseHandle(hstmt);
-			return -1;
+			std::wcout << L"Database::GetCharNo : query : " << query << L'\n';
 		}
 
-		if (SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_CHAR,
-			0, 0, (SQLCHAR*)charname_.c_str(), 0, nullptr) != SQL_SUCCESS)
-		{
-			std::cerr << "DB::InsertCharInfo : Error Binding Parameters\n";
-			ReleaseHandle(hstmt);
-			return -1;
-		}
-
-		retcode = SQLExecute(hstmt);
+		SQLRETURN retcode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
 		{
-			std::cerr << "DB::InsertCharInfo : Failed to Execute\n";
+			std::cerr << "DB::GetCharNo : Failed to Execute\n";
 			ReleaseHandle(hstmt);
 			return -1;
 		}
@@ -1213,7 +1251,7 @@ private:
 
 		if (retcode != SQL_SUCCESS)
 		{
-			std::cerr << "DB::InsertCharInfo : Failed to BindCol\n";
+			std::cerr << "DB::GetCharNo : Failed to BindCol\n";
 			ReleaseHandle(hstmt);
 			return -1;
 		}
@@ -1221,7 +1259,7 @@ private:
 		retcode = SQLFetch(hstmt);
 		if (retcode != SQL_SUCCESS)
 		{
-			std::cerr << "DB::InsertCharInfo : Failed to Fetch\n";
+			std::cerr << "DB::GetCharNo : Failed to Fetch\n";
 			ReleaseHandle(hstmt);
 			return -1;
 		}
@@ -1239,36 +1277,27 @@ private:
 			return false;
 		}
 
-		SQLRETURN retcode = SQLPrepare(hstmt, (SQLWCHAR*)
-			L"INSERT INTO CHARLIST (USERNO, CHARNO) VALUES (?, ?) ", SQL_NTS);
+		SQLWCHAR query[512] = { 0 };
+		swprintf((wchar_t*)query, 512,
+			L"INSERT INTO CHARLIST (USERNO, CHARNO) VALUES (%d, %d) "
+			, usercode_, charcode_);
 
-		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
+		if (DB_DEBUG)
 		{
-			std::cerr << "DB::InsertCharList : Error Preparing SQL stmt\n";
-			ReleaseHandle(hstmt);
-			return -1;
+			std::wcout << "Database::InsertCharList : query : " << query << '\n';
 		}
 
+		SQLRETURN retcode = SQLExecDirect(hstmt, query, SQL_NTS);
 
-		if (SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER,
-			0, 0, (SQLPOINTER)&usercode_, 0, nullptr) != SQL_SUCCESS ||
-			SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER,
-				0, 0, (SQLPOINTER)&charcode_, 0, nullptr) != SQL_SUCCESS)
-		{
-			std::cerr << "DB::InsertCharList : Error Binding Parameters\n";
-			ReleaseHandle(hstmt);
-			return false;
-		}
-
-		retcode = SQLExecute(hstmt);
-		ReleaseHandle(hstmt);
 
 		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
 		{
 			std::cerr << "DB::InsertCharList : Failed to Execute\n";
+			ReleaseHandle(hstmt);
 			return false;
 		}
 
+		ReleaseHandle(hstmt);
 		return true;
 	}
 
@@ -1339,6 +1368,26 @@ private:
 
 		return;
 
+	}
+
+	void PrintError(SQLHANDLE hstmt)
+	{
+		SQLWCHAR sqlState[6] = { 0 };
+		SQLWCHAR message[1000] = { 0 };
+		SQLINTEGER nativeError;
+		SQLSMALLINT msgLength;
+
+		// 진단 메시지 가져오기
+		SQLRETURN ret = SQLGetDiagRec(SQL_HANDLE_STMT, hstmt, 1, sqlState, &nativeError, message, sizeof(message), &msgLength);
+
+		if (SQL_SUCCEEDED(ret)) {
+			std::wcout << L"SQLState: " << sqlState << L"\n";
+			std::wcout << L"Native Error Code: " << nativeError << L"\n";
+			std::wcout << L"Error Message: " << message << L"\n";
+		}
+		else {
+			std::cout << "No error information available.\n";
+		}
 	}
 
 	RedisManager m_RedisManager;

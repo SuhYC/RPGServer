@@ -100,7 +100,7 @@ public:
 	bool IsConnected() const noexcept { return m_IsConnected.load(); }
 
 	// 바이트형식의 ip를 std::string으로 변환
-	const std::string& GetIP() const noexcept
+	const std::string GetIP() const noexcept
 	{
 		char ipStr[INET_ADDRSTRLEN];
 

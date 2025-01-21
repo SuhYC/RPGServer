@@ -8,7 +8,7 @@
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "mswsock.lib") // acceptEx()
 
-const unsigned short MAX_SOCKBUF = 100;
+const unsigned short MAX_SOCKBUF = 1000;
 const unsigned short MAX_WORKTHREAD = 4;
 const unsigned long LIFE_OF_TOKEN_SEC = 60;
 

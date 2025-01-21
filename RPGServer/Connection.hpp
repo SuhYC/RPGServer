@@ -156,7 +156,7 @@ public:
 			return false;
 		}
 
-		//std::cout << "Connection::SendIO : SendMsg : " << m_SendingBuffer << '\n';
+		std::cout << "Connection::SendIO : SendMsg : " << m_SendingBuffer << '\n';
 
 		return true;
 	}

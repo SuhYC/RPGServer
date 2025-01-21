@@ -82,6 +82,7 @@ public:
 		ReqMessage msg;
 		if (!m_JsonMaker.ToReqMessage(Req_, msg))
 		{
+			std::cout << "ReqHandler::HandleReq : ToReqMsg 실패\n";
 			// ReqMessage포맷조차 안맞췄다고..?
 			return false;
 		}
@@ -122,6 +123,16 @@ public:
 		return;
 	}
 
+	void ClearSession()
+	{
+		for (int idx = 0; idx < m_MaxClient; idx++)
+		{
+			HandleLogOut(idx);
+		}
+
+		return;
+	}
+
 	void SetIP(const int connidx_, const uint32_t ip_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(connidx_);
@@ -146,6 +157,11 @@ private:
 
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
+		if (pUser->GetUserCode() != CLIENT_NOT_CERTIFIED)
+		{
+			HandleLogOut(userindex_);
+		}
+
 		int nRet = m_DB.SignIn(stParam.id, stParam.pw, pUser->GetIP());
 
 		// 정보 틀림
@@ -162,7 +178,9 @@ private:
 
 		pUser->SetUserCode(nRet);
 
-		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+		std::string strCharList = m_DB.GetCharList(nRet);
+
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, strCharList);
 	}
 
 	RESULTCODE HandleSignUp(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -202,6 +220,16 @@ private:
 		return RESULTCODE::SUCCESS;
 	}
 
+	/// <summary>
+	/// SignIn이랑 독립된 구조로 만들려고 했는데
+	/// SignIn 후에 어차피 CharList를 요청하여야한다.
+	/// SignIn 동작 내에도 구현되어 있다.
+	/// GetCharList만 독립적으로 사용할지는 아직 모르겠음.
+	/// </summary>
+	/// <param name="userindex_"></param>
+	/// <param name="ReqNo"></param>
+	/// <param name="param_"></param>
+	/// <returns></returns>
 	RESULTCODE HandleGetCharList(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
@@ -243,6 +271,11 @@ private:
 	{
 		ReserveCharNameParameter stParam;
 		if (!m_JsonMaker.ToReserveCharNameParameter(param_, stParam))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
+		}
+
+		if (stParam.CharName.empty())
 		{
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
 		}
@@ -306,7 +339,7 @@ private:
 		}
 
 		// 시작맵 코드를 아직 안정했다. 여러맵에서 시작하게 할까 아니면 한 맵에서만 시작할까
-		if (!m_DB.CreateCharactor(pUser->GetUserCode(), stParam.CharName, 0))
+		if (!m_DB.CreateCharactor(pUser->GetUserCode(), stParam.CharName, 100000000))
 		{
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
 		}
@@ -671,6 +704,8 @@ private:
 	JsonMaker m_JsonMaker;
 	UserManager m_UserManager;
 	Database m_DB;
+
+	unsigned short m_MaxClient;
 
 	typedef RESULTCODE(ReqHandler::* REQ_HANDLE_FUNC)(const int, const unsigned int, const std::string&);
 
