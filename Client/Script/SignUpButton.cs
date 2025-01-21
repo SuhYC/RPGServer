@@ -19,20 +19,27 @@ public class SignUpButton : MonoBehaviour
 
     public async void OnClick()
     {
-        string str;
         if (signUpData == null)
         {
             Debug.Log("SignUpButton::OnClick : No SignUpData Instance.");
             return;
         }
 
+        string str;
+
         try
         {
             str = signUpData.GetData();
         }
-        catch(SignUpData.NotSelectedException)
+        catch(CustomException.NotSelectedException e)
         {
-            Debug.Log("SignUpButton::OnClick : QuestNo. Not Selected.");
+            Debug.Log($"SignUpButton::OnClick : {e.Message}");
+            TextMessage.CreateTextPanel(e.Message);
+            return;
+        }
+        catch(CustomException.NotFoundInputObjectException e)
+        {
+            Debug.Log($"SignUpButton::OnClick : {e.Message}");
             return;
         }
 
@@ -49,5 +56,7 @@ public class SignUpButton : MonoBehaviour
         }
 
         await NetworkManager.Instance.SendMsg(msg);
+
+        return;
     }
 }

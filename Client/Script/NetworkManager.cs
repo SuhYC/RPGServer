@@ -104,7 +104,7 @@ public class NetworkManager : MonoBehaviour
                 {
                     string receivedData = Encoding.UTF8.GetString(_buffer, 0, bytesRead);
                     Debug.Log($"NetworkManager::RecvMsg : 수신: {receivedData}");
-                    ResHandler.Instance.HandlePacket(receivedData);
+                    await ResHandler.Instance.HandlePacket(receivedData);
                 }
                 // 연결종료, 오류 발생
                 else

@@ -1,13 +1,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using static PacketMaker;
 
 public class ResHandler : MonoBehaviour
 {
     private static ResHandler _instance;
-    private readonly object _lockObject = new object();
+    private readonly AsyncLock _lockObject = new AsyncLock();
     private string _remainMsg;
 
 
@@ -49,9 +50,9 @@ public class ResHandler : MonoBehaviour
         _remainMsg = string.Empty;
     }
 
-    public void HandlePacket(string msg)
+    public async Task HandlePacket(string msg)
     {
-        lock(_lockObject)
+        using (await _lockObject.LockAsync())
         {
             string str = _remainMsg + msg;
             _remainMsg = string.Empty;
@@ -71,21 +72,26 @@ public class ResHandler : MonoBehaviour
 
             string header = str.Substring(1, index - 1);
 
-            try
+            try // 뭉쳐 온 데이터 일괄 처리 필요
             {
-                int size = int.Parse(header);
-
-                if (str.Length > size + index)
+                while(true)
                 {
-                    string req = str.Substring(index + 1, size);
-                    _remainMsg = str.Substring(size + index + 1);
+                    int size = int.Parse(header);
 
-                    PacketMaker.instance.HandleServerResponse(req);
+                    if (str.Length > size + index)
+                    {
+                        string req = str.Substring(index + 1, size);
+                        str = str.Substring(size + index + 1);
+
+                        await PacketMaker.instance.HandleServerResponse(req);
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
-                else
-                {
-                    _remainMsg = str;
-                }
+
+                _remainMsg = str;
             }
             catch (Exception e)
             {

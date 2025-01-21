@@ -1,9 +1,12 @@
+using JetBrains.Annotations;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class PacketMaker : MonoBehaviour
 {
@@ -14,7 +17,7 @@ public class PacketMaker : MonoBehaviour
     private SortedDictionary<uint, ReqMessage> _msgs;
 
     // 서버로부터 받은 결과를 각 유형에 맞게 분기하기 위함
-    public delegate void ResHandleFunc(ReqMessage reqmsg_, ResMessage resmsg_);
+    public delegate Task ResHandleFunc(ReqMessage reqmsg_, ResMessage resmsg_);
     Hashtable _resHandleFuncs;
     public delegate void InfoHandleFunc(ResMessage resmsg_);
     Hashtable _infoHandleFuncs;
@@ -136,9 +139,17 @@ public class PacketMaker : MonoBehaviour
 
         ResHandleFunc SignIn = HandleSignInResponse;
         ResHandleFunc SignUp = HandleSignUpResponse;
+        ResHandleFunc ReserveNick = HandleReserveNicknameResponse;
+        ResHandleFunc CreateChar = HandleCreateCharResponse;
+        ResHandleFunc CancelReserve = HandleCancelReserveNicknameResponse;
+        ResHandleFunc GetCharInfo = HandleGetCharInfoResponse;
 
         _resHandleFuncs.Add(ReqType.SIGNIN, SignIn);
         _resHandleFuncs.Add(ReqType.SIGNUP, SignUp);
+        _resHandleFuncs.Add(ReqType.RESERVE_CHAR_NAME, ReserveNick);
+        _resHandleFuncs.Add(ReqType.CANCEL_CHAR_NAME_RESERVE, CancelReserve);
+        _resHandleFuncs.Add(ReqType.CREATE_CHAR, CreateChar);
+        _resHandleFuncs.Add(ReqType.GET_CHAR_INFO, GetCharInfo);
 
         InfoHandleFunc Pos = HandlePosInfo;
 
@@ -167,15 +178,15 @@ public class PacketMaker : MonoBehaviour
         return JsonUtility.ToJson(_msgs[_ReqNo]);
     }
 
-    public void HandleServerResponse(string msg_)
+    public async Task HandleServerResponse(string msg_)
     {
         ResMessage res = JsonUtility.FromJson<ResMessage>(msg_);
 
-        Debug.Log(msg_);
-        Debug.Log(res.ReqNo);
+        Debug.Log($"PacketMaker::HandleServerResponse : Recvmsg : {msg_}");
+        Debug.Log($"PacketMaker::HandleServerResponse : ReqNo : {res.ReqNo}");
 
         // res message
-        if(res.ReqNo != 0)
+        if (res.ReqNo != 0)
         {
             ReqMessage reqmsg;
             if(!_msgs.TryGetValue(res.ReqNo, out reqmsg))
@@ -188,7 +199,7 @@ public class PacketMaker : MonoBehaviour
             {
                 if (_resHandleFuncs[reqmsg.type] != null)
                 {
-                    ((ResHandleFunc)_resHandleFuncs[reqmsg.type]).Invoke(reqmsg, res);
+                    await (((ResHandleFunc)_resHandleFuncs[reqmsg.type]).Invoke(reqmsg, res));
                 }
             }
             catch (InvalidCastException e)
@@ -227,68 +238,213 @@ public class PacketMaker : MonoBehaviour
         return;
     }
 
-
-    private void HandleSignUpResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    private async Task HandleSignUpResponse(ReqMessage reqmsg_, ResMessage resmsg_)
     {
-        Debug.Log(resmsg_.ResCode);
+        await Task.CompletedTask;
 
-        if(resmsg_.ResCode == ResCode.SUCCESS)
+        switch (resmsg_.ResCode)
         {
-            Debug.Log("PacketMaker::HandleSignUpResponse : SUCCESS!!");
-        }
-        else if(resmsg_.ResCode == ResCode.WRONG_PARAM)
-        {
-            Debug.Log("PacketMaker::HandleSignUpResponse : WRONG_PARAM..");
-        }
-        else if(resmsg_.ResCode == ResCode.SIGNUP_ALREADY_IN_USE)
-        {
-            Debug.Log("PacketMaker::HandleSignUpResponse : SIGNUP_ALREADY_IN_USE..");
-        }
-        else if(resmsg_.ResCode == ResCode.SIGNUP_FAIL)
-        {
-            Debug.Log("PacketMaker::HandleSignUpResponse : SIGNUP_FAIL..");
-        }
-        else if(resmsg_.ResCode == ResCode.SYSTEM_FAIL)
-        {
-            Debug.Log("PacketMaker::HandleSignUpResponse : SYSTEM_FAIL..");
-        }
-        else
-        {
-            Debug.Log("PacketMaker::HandleSignUpResponse : Undefined ResCode");
-        }
-    }
+            case ResCode.SUCCESS:
+                TextMessage.CreateTextPanel("Sign Up SUCCESSLY");
+                //Debug.Log("PacketMaker::HandleSignUpResponse : SUCCESS!!");
+                break;
 
-    private void HandleSignInResponse(ReqMessage reqmsg_, ResMessage resmsg_)
-    {
-        Debug.Log(resmsg_.ResCode);
+            case ResCode.WRONG_PARAM:
+                TextMessage.CreateTextPanel("WRONG PARAMETER!");
+                //Debug.Log("PacketMaker::HandleSignUpResponse : WRONG_PARAM..");
+                break;
 
-        if(resmsg_.ResCode == ResCode.SUCCESS)
-        {
+            case ResCode.SIGNUP_ALREADY_IN_USE:
+                TextMessage.CreateTextPanel("YOUR ID IS ALREADY IN USE!");
+                //Debug.Log("PacketMaker::HandleSignUpResponse : SIGNUP_ALREADY_IN_USE..");
+                break;
 
-        }
-        else if(resmsg_.ResCode == ResCode.WRONG_PARAM)
-        {
+            case ResCode.SIGNUP_FAIL:
+                TextMessage.CreateTextPanel("FAILED TO SIGN UP.");
+                //Debug.Log("PacketMaker::HandleSignUpResponse : SIGNUP_FAIL..");
+                break;
 
-        }
-        else if(resmsg_.ResCode == ResCode.SIGNIN_FAIL)
-        {
+            case ResCode.SYSTEM_FAIL:
+                TextMessage.CreateTextPanel("ERRORCODE 2");
+                //Debug.Log("PacketMaker::HandleSignUpResponse : SYSTEM_FAIL..");
+                break;
 
-        }
-        else if(resmsg_.ResCode == ResCode.SIGNIN_ALREADY_HAVE_SESSION)
-        {
-
-        }
-        else
-        {
-            Debug.Log("PacketMaker::HandleSignInResponse : Undefined ResCode");
+            default:
+                Debug.Log("PacketMaker::HandleSignUpResponse : Undefined ResCode");
+                break;
         }
 
         return;
     }
 
+    private async Task HandleSignInResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                await UserData.instance.InitCharList(resmsg_.Msg);
+                //Debug.Log("PacketMaker::HandleSignInResponse : SUCCESS!!");
+
+                if(UserData.instance.IsCompletelyLoaded())
+                {
+                    SceneManager.LoadScene("SelectCharacterScene");
+                }
+
+                break;
+
+            case ResCode.WRONG_PARAM:
+                TextMessage.CreateTextPanel("Wrong Input.");
+                //Debug.Log("PacketMaker::HandleSignInResponse : WRONG_PARAM.");
+                break;
+
+            case ResCode.SIGNIN_FAIL:
+                TextMessage.CreateTextPanel("Wrong ID/PW.");
+                //Debug.Log("PacketMaker::HandleSignInResponse : SIGNIN_FAIL.");
+                break;
+
+            case ResCode.SIGNIN_ALREADY_HAVE_SESSION:
+                TextMessage.CreateTextPanel("This ID Already Have Session.");
+                //Debug.Log("PacketMaker::HandleSignInResponse : ALREADY HAVE SESSION.");
+                break;
+
+            default:
+                Debug.Log("PacketMaker::HandleSignInResponse : Undefined ResCode");
+                break;
+        }
+
+        return;
+    }
+
+    /// <summary>
+    /// SignIn과 독립적으로 사용하려고 했으나
+    /// SignIn 후에 반드시 요청하여야 하므로 HandleSignIn 내에서 해결.
+    /// ReqCharList만 독립적으로 사용할지는 모르겠음.
+    /// </summary>
+    /// <returns></returns>
+    private async Task ReqCharList()
+    {
+        string str = ToReqMessage(ReqType.GET_CHAR_LIST, "");
+        await NetworkManager.Instance.SendMsg(str);
+        return;
+    }
+
+    private async Task HandleGetCharListResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+        Charlist charlist = JsonUtility.FromJson<Charlist>(resmsg_.Msg);
+
+        // ... 담아둘 스크립트를 구성해서 업데이트 하는 정도만 하자.
+
+        return;
+    }
+
+    private async Task HandleGetCharInfoResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        UserData.instance.InitCharInfo(resmsg_.Msg);
+
+        if(UserData.instance.IsCompletelyLoaded())
+        {
+            SceneManager.LoadScene("SelectCharacterScene");
+        }
+
+        return;
+    }
+
+    private async Task HandleReserveNicknameResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask; // async Task를 넣을 필요가 있을까?
+        Debug.Log($"PacketMaker::HandleReserveNicknameResponse : rescode : {resmsg_.ResCode}");
+
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                CheckNicknamePanel.CreateTextPanel(reqmsg_.msg);
+                Debug.Log($"PacketMaker::HandleReserveNicknameResponse : SUCCESS!");
+                break;
+
+            case ResCode.WRONG_PARAM:
+                TextMessage.CreateTextPanel("Wrong input.");
+                Debug.Log($"PacketMaker::HandleReserveNicknameResponse : WRONG_PARAM");
+                break;
+
+            case ResCode.REQ_FAIL:
+                TextMessage.CreateTextPanel("생성할 수 없는 닉네임입니다.");
+                Debug.Log($"PacketMaker::HandleReserveNicknameResponse : REQ_FAIL");
+                break;
+
+            default:
+                Debug.Log($"PacketMaker::HandleReserveNicknameResponse : Undefined ResCode.");
+                break;
+        }
+    }
+
+    private async Task HandleCreateCharResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        Debug.Log($"PacketMaker::HandleCreateCharResponse : rescode : {resmsg_.ResCode}");
+
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                // 생성 성공 처리
+                Debug.Log($"PacketMaker::HandleCreateCharResponse : SUCCESS!");
+                break;
+
+            case ResCode.WRONG_PARAM:
+                TextMessage.CreateTextPanel("Wrong input.");
+                Debug.Log($"PacketMaker::HandleCreateCharResponse : WRONG_PARAM");
+                break;
+
+            case ResCode.REQ_FAIL:
+                TextMessage.CreateTextPanel("생성에 실패했습니다.");
+                Debug.Log($"PacketMaker::HandleCreateCharResponse : REQ_FAIL");
+                break;
+
+            case ResCode.SYSTEM_FAIL:
+                TextMessage.CreateTextPanel("ERRORCODE 2");
+                Debug.Log($"PacketMaker::HandleCreateCharResponse : SYSTEM_FAIL");
+                break;
+
+            default:
+                Debug.Log($"PacketMaker::HandleCreateCharResponse : Undefined ResCode.");
+                break;
+        }
+    }
+
+    private async Task HandleCancelReserveNicknameResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        Debug.Log($"PacketMaker::HandleCancelReserveNicknameResponse : rescode : {resmsg_.ResCode}");
+
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                Debug.Log($"PacketMaker::HandleCancelReserveNicknameResponse : SUCCESS!");
+                break;
+
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleCancelReserveNicknameResponse : WRONG_PARAM");
+                break;
+
+            case ResCode.REQ_FAIL:
+                Debug.Log($"PacketMaker::HandleCancelReserveNicknameResponse : REQ_FAIL");
+                break;
+
+            default:
+                Debug.Log($"PacketMaker::HandleCancelReserveNicknameResponse : Undefined ResCode.");
+                break;
+        }
+    }
+
     private void HandlePosInfo(ResMessage resmsg_)
     {
-
+        // 구현 필요
         return;
     }
 }
