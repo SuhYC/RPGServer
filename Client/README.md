@@ -5,6 +5,9 @@ SignUp 결과 수신 및 패킷처리 까지 완료 (이후 팝업 메시지를 
 SignIn 결과 수신 및 정보 요청 후 수신 완료 (SignIn -> GetCharList -> GetCharInfo)<br/>
 GetCharList로 CharCode 리스트를 수신한 뒤, 해당 정보로 다시 GetCharInfo 요청 (캐릭터가 아직 없는 계정은 바로 씬 전환.)<br/>
 GetCharInfo로 수신한 정보를 저장한 뒤, 모든 CharList의 CharInfo를 수신 완료했으면 캐릭터 선택창으로 씬 전환. <br/>
+CreateChar 과정 구현. (ReserveCharName -> CreateChar) ReserveCharName을 호출한 뒤 생성가능한 경우 생성여부 재확인 창을 띄운다. 재확인창에서 생성을 선택한 경우 최종적으로 캐릭터가 생성된다. <br/>
+ReserveCharName으로 생성가능한 닉네임에 예약을 건 후 생성여부를 재확인한다. 생성창에서 닉네임을 입력하고 버튼을 누르면 호출한다. <br/>
+CancelCharNameReserve로 예약한 닉네임의 예약을 취소할 수 있다. 재확인창에서 생성을 거부하는 경우 호출한다. <br/>
 
 ## 패킷 분할
 [MTU](https://github.com/SuhYC/Lesson/blob/main/Network/MTU.md)관련 내용과 연계되는 것으로 추정 (혹은 TCP 로직 처리 중에 분할되었을수도 있고..) <br/>
