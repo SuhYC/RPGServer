@@ -8,6 +8,38 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+
+
+/// <summary>
+/// 서버로부터 수신한 응답을 ResHandler에서 적절히 가공해 도착한 데이터를 바탕으로 클라이언트에 반영하는 클래스이다.
+/// 서버에 특정 요청을 하기 위한 ReqMessage를 작성하는 클래스이기도 하다.
+/// 
+/// 송신에 사용되는 메시지의 포맷은
+/// [size]ReqJsonStr 이며
+/// 
+/// ReqJsonStr은 ReqType, ReqNo, Msg로 구성되어 있다.
+/// ReqType은 요청하는 동작이나 데이터의 번호이며
+/// ReqNo는 클라이언트에서 적절한 처리를 위한 요청번호이다. 서버는 처리가 끝난 요청의 요청번호를 그대로 재전송한다.
+/// Msg는 ReqType에 맞는 파라미터로 구성된 JsonStr이다.
+/// 
+/// 수신에 사용되는 메시지의 포맷은
+/// [size]ResJsonStr 이며
+/// 
+/// ResJsonStr은 ReqNo, ResCode, Msg로 구성되어 있다.
+/// ReqNo는 ReqMessage에 입력되었던 요청번호를 그대로 전송한다. 만약 요청한 정보는 아니고 전파된 정보라면 ReqNo가 0으로 수신된다.
+/// ResCode는 처리결과의 정보를 담는 Enum값이다.
+/// Msg는 Optional Message이며 데이터를 요청한 경우에 해당 데이터를 Msg에 담아 서버가 전송해준다.
+/// 
+/// 
+/// 수신한 응답으로부터 ResHandler가 [size]헤더를 제거하고 ResJsonStr만 HandleServerResponse의 매개변수로 호출하게 된다.
+/// ResJsonStr을 ResMessage로 역직렬화하여 ReqNo가 0인지 확인하고 0이라면 ResCode를 통해 어떤 전파정보인지 판단하여 hashtable에 저장된 함수를 호출한다.
+/// ReqNo가 0이 아니라면 요청했던 메시지 리스트에서 ReqNo를 찾아 어떤 요청이었는지 확인하고 hashtable에 저장된 함수를 호출해 결과를 클라이언트에 반영한다.
+/// 
+/// ReqNo를 굳이 사용하는 이유는 각각의 요청이 서버 <-> 클라이언트를 오갈때는 TCP의 순서보장에 의해 순서가 바뀌지 않지만
+/// 서버에서 처리하는 과정에서는 처리시간에 의해 충분히 순서가 변경될 수 있으므로 어떤 요청에 대한 응답인지 확인할 방법이 필요하다.
+/// 
+/// 송신에 사용할 메시지는 ToReqMessage를 통해 작성하고, NetworkManaer에 SendMsg를 통해 전송한다.
+/// </summary>
 public class PacketMaker : MonoBehaviour
 {
     // singleton
@@ -40,6 +72,9 @@ public class PacketMaker : MonoBehaviour
         USE_ITEM,                   // 인벤토리의 아이템 사용
         MOVE_MAP,                   // 맵 이동 요청
         CHAT_EVERYONE,              // 해당 맵의 모든 인원에게 채팅 (다른 종류의 채팅은 더 생각해보자.)
+        GET_INVEN,                  // 인벤토리 정보 요청
+        GET_SALESLIST,              // 특정 npc의 판매목록 요청
+        DEBUG_SET_GOLD,             // 디버깅용. 골드 설정
 
         POS_INFO,                   // 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
         LAST = POS_INFO				// enum class가 수정되면 마지막 원소로 지정할 것
@@ -69,7 +104,11 @@ public class PacketMaker : MonoBehaviour
         SEND_INFO_GET_DAMAGE,           // 타 플레이어의 피격 정보
         SEND_INFO_MONSTER_DESPAWN,      // 해당 맵의 몬스터 사망 정보
         SEND_INFO_MONSTER_GET_DAMAGE,   // 해당 맵의 몬스터 피격 정보
-        SEND_INFO_MONSTER_CREATED,		// 해당 맵의 몬스터 생성 정보
+        SEND_INFO_MONSTER_CREATED,      // 해당 맵의 몬스터 생성 정보
+        SEND_INFO_CHAT_EVERYONE,        // 해당 맵의 모두에게 채팅
+        SEND_INFO_OBJECT_CREATED,       // 해당 맵의 아이템 생성 정보
+        SEND_INFO_OBJECT_DISCARDED,     // 해당 맵의 아이템 소멸 정보
+        SEND_INFO_OBJECT_OBTAINED		// 해당 맵의 아이템 타인에 의한 습득정보 (자신의 습득은 Req에 의한 SUCCESS로 처리)
     }
 
     [Serializable]
@@ -95,6 +134,11 @@ public class PacketMaker : MonoBehaviour
         public uint ReqNo;
         public ResCode ResCode;
         public string Msg;
+    }
+
+    public class SelectCharParam
+    {
+        public int Charcode;
     }
 
     public static PacketMaker instance
@@ -130,6 +174,12 @@ public class PacketMaker : MonoBehaviour
         }
     }
 
+
+    /// <summary>
+    /// 인스턴스를 초기화합니다. <br/>
+    /// 각각의 요청에 대한 응답메시지 처리함수를 hashtable에 담는 과정을 포함합니다. <br/>
+    /// 요청이 아닌 서버에서 전파하는 메시지 처리함수도 hashtable에 따로 담습니다.
+    /// </summary>
     private void Init()
     {
         DontDestroyOnLoad(this.gameObject);
@@ -137,25 +187,64 @@ public class PacketMaker : MonoBehaviour
         _resHandleFuncs = new Hashtable();
         _infoHandleFuncs = new Hashtable();
 
-        ResHandleFunc SignIn = HandleSignInResponse;
-        ResHandleFunc SignUp = HandleSignUpResponse;
-        ResHandleFunc ReserveNick = HandleReserveNicknameResponse;
-        ResHandleFunc CreateChar = HandleCreateCharResponse;
-        ResHandleFunc CancelReserve = HandleCancelReserveNicknameResponse;
-        ResHandleFunc GetCharInfo = HandleGetCharInfoResponse;
+        // ----- Response to Req -----
 
+        ResHandleFunc SignIn = HandleSignInResponse;
         _resHandleFuncs.Add(ReqType.SIGNIN, SignIn);
+
+        ResHandleFunc SignUp = HandleSignUpResponse;
         _resHandleFuncs.Add(ReqType.SIGNUP, SignUp);
+
+        ResHandleFunc ReserveNick = HandleReserveNicknameResponse;
         _resHandleFuncs.Add(ReqType.RESERVE_CHAR_NAME, ReserveNick);
-        _resHandleFuncs.Add(ReqType.CANCEL_CHAR_NAME_RESERVE, CancelReserve);
+
+        ResHandleFunc CreateChar = HandleCreateCharResponse;
         _resHandleFuncs.Add(ReqType.CREATE_CHAR, CreateChar);
+
+        ResHandleFunc CancelReserve = HandleCancelReserveNicknameResponse;
+        _resHandleFuncs.Add(ReqType.CANCEL_CHAR_NAME_RESERVE, CancelReserve);
+
+        ResHandleFunc GetCharInfo = HandleGetCharInfoResponse;
         _resHandleFuncs.Add(ReqType.GET_CHAR_INFO, GetCharInfo);
 
-        InfoHandleFunc Pos = HandlePosInfo;
+        ResHandleFunc GetInven = HandleGetInvenResponse;
+        _resHandleFuncs.Add(ReqType.GET_INVEN, GetInven);
 
+        ResHandleFunc SelectChar = HandleSelectCharResponse;
+        _resHandleFuncs.Add(ReqType.SELECT_CHAR, SelectChar);
+
+        ResHandleFunc MoveMap = HandleMoveMapResponse;
+        _resHandleFuncs.Add(ReqType.MOVE_MAP, MoveMap);
+
+        ResHandleFunc GetSalesList = HandleGetSalesListResponse;
+        _resHandleFuncs.Add(ReqType.GET_SALESLIST, GetSalesList);
+
+        ResHandleFunc BuyItem = HandleBuyItemResponse;
+        _resHandleFuncs.Add(ReqType.BUY_ITEM, BuyItem);
+
+        // ----- SendInfo -----
+
+        InfoHandleFunc Pos = HandlePosInfo;
         _infoHandleFuncs.Add(ResCode.SEND_INFO_POS, Pos);
+
+        InfoHandleFunc Chat = HandleChat;
+        _infoHandleFuncs.Add(ResCode.SEND_INFO_CHAT_EVERYONE, Chat);
+
+
+        // ----- For Debug -----
+        ResHandleFunc SetGold = HandleSetGoldResponse;
+        _resHandleFuncs.Add(ReqType.DEBUG_SET_GOLD, SetGold);
+
+
     }
 
+    /// <summary>
+    /// 요청할 동작에 대해 ReqMsg를 만듭니다. <br/>
+    /// 리턴값을 NetworkManager.instance.SendMsg()에 넣으면 됩니다.
+    /// </summary>
+    /// <param name="type_">요청할 동작의 enum을 입력합니다.</param>
+    /// <param name="msg_">요청할 동작의 파라미터를 입력합니다.</param>
+    /// <returns></returns>
     public string ToReqMessage(ReqType type_, string msg_)
     {
         _ReqNo++;
@@ -173,17 +262,37 @@ public class PacketMaker : MonoBehaviour
             Debug.Log($"PacketMaker::ToMessage : {e.Message}");
         }
 
-        Debug.Log($"PacketMaker::ToMessage : {_ReqNo}, {_msgs[_ReqNo].ToString()}");
+        //Debug.Log($"PacketMaker::ToMessage : {_ReqNo}, {_msgs[_ReqNo].ToString()}");
 
         return JsonUtility.ToJson(_msgs[_ReqNo]);
     }
 
+
+    /// <summary>
+    /// 수신메시지의 payload를 받아 처리합니다.
+    /// 
+    /// ReqNo를 확인하여 0이라면 클라이언트에서 요청한 것이 아닌 서버에서 일방적으로 전파하는 메시지입니다.
+    /// 0이라면 ResCode를 통해 어떤 전파메시지인지 확인하여 처리하고
+    /// 0이 아니라면 ReqNo를 조회하여 어떤 요청을 했었는지 확인하고 처리합니다.
+    /// </summary>
+    /// <param name="msg_">ResMessage의 JSONStr</param>
+    /// <returns></returns>
     public async Task HandleServerResponse(string msg_)
     {
-        ResMessage res = JsonUtility.FromJson<ResMessage>(msg_);
+        ResMessage res;
 
-        Debug.Log($"PacketMaker::HandleServerResponse : Recvmsg : {msg_}");
-        Debug.Log($"PacketMaker::HandleServerResponse : ReqNo : {res.ReqNo}");
+        try
+        {
+            res = JsonUtility.FromJson<ResMessage>(msg_);
+        }
+        catch (Exception e)
+        {
+            Debug.Log($"PacketMaker::HandleServerResponse : Parsing Error On Msg : {msg_}   . {e.Message}");
+            return;
+        }
+
+        //Debug.Log($"PacketMaker::HandleServerResponse : Recvmsg : {msg_}");
+        //Debug.Log($"PacketMaker::HandleServerResponse : ReqNo : {res.ReqNo}");
 
         // res message
         if (res.ReqNo != 0)
@@ -195,11 +304,20 @@ public class PacketMaker : MonoBehaviour
                 return;
             }
 
+            if(reqmsg.type == ReqType.SIGNIN)
+            {
+                await HandleSignInResponse(reqmsg, res);
+            }
+
             try
             {
-                if (_resHandleFuncs[reqmsg.type] != null)
+                if (_resHandleFuncs.ContainsKey(reqmsg.type) && _resHandleFuncs[reqmsg.type] != null)
                 {
-                    await (((ResHandleFunc)_resHandleFuncs[reqmsg.type]).Invoke(reqmsg, res));
+                    await ((ResHandleFunc)_resHandleFuncs[reqmsg.type]).Invoke(reqmsg, res);
+                }
+                else
+                {
+                    Debug.Log($"PacketMaker::HandleServerResponse : {reqmsg.type}");
                 }
             }
             catch (InvalidCastException e)
@@ -209,6 +327,7 @@ public class PacketMaker : MonoBehaviour
             catch (Exception e)
             {
                 Debug.Log($"PacketMaker::HandleServerResponse : {e.Message}");
+                Debug.Log($"PacketMaker::HandleServerResponse : stack trace : {e.StackTrace}");
             }
 
             _msgs.Remove(res.ReqNo);
@@ -216,13 +335,14 @@ public class PacketMaker : MonoBehaviour
         // info message
         else
         {
-            Debug.Log(res.ReqNo);
+            Debug.Log($"PacketMaker::HandleServerResponse : info-> res.Reqno : {res.ReqNo}");
 
             try
             {
+                Debug.Log($"PacketMaker::HandleServerResponse : rescode : {(int)res.ResCode}");
                 if (_infoHandleFuncs[res.ResCode] != null)
                 {
-                    ((InfoHandleFunc)_infoHandleFuncs[(int)res.ResCode]).Invoke(res);
+                    ((InfoHandleFunc)_infoHandleFuncs[res.ResCode]).Invoke(res);
                 }
             }
             catch (InvalidCastException e)
@@ -238,6 +358,13 @@ public class PacketMaker : MonoBehaviour
         return;
     }
 
+
+    /// <summary>
+    /// 회원가입 요청에 대한 응답을 처리합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
     private async Task HandleSignUpResponse(ReqMessage reqmsg_, ResMessage resmsg_)
     {
         await Task.CompletedTask;
@@ -277,6 +404,12 @@ public class PacketMaker : MonoBehaviour
         return;
     }
 
+    /// <summary>
+    /// 로그인 요청에 대한 응답을 처리합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
     private async Task HandleSignInResponse(ReqMessage reqmsg_, ResMessage resmsg_)
     {
         await Task.CompletedTask;
@@ -287,7 +420,7 @@ public class PacketMaker : MonoBehaviour
                 await UserData.instance.InitCharList(resmsg_.Msg);
                 //Debug.Log("PacketMaker::HandleSignInResponse : SUCCESS!!");
 
-                if(UserData.instance.IsCompletelyLoaded())
+                if(UserData.instance.IsCompletelyLoadedCharInfo())
                 {
                     SceneManager.LoadScene("SelectCharacterScene");
                 }
@@ -318,6 +451,8 @@ public class PacketMaker : MonoBehaviour
     }
 
     /// <summary>
+    /// [미사용]
+    /// 
     /// SignIn과 독립적으로 사용하려고 했으나
     /// SignIn 후에 반드시 요청하여야 하므로 HandleSignIn 내에서 해결.
     /// ReqCharList만 독립적으로 사용할지는 모르겠음.
@@ -330,6 +465,12 @@ public class PacketMaker : MonoBehaviour
         return;
     }
 
+    /// <summary>
+    /// [미사용]
+    /// </summary>
+    /// <param name="reqmsg_"></param>
+    /// <param name="resmsg_"></param>
+    /// <returns></returns>
     private async Task HandleGetCharListResponse(ReqMessage reqmsg_, ResMessage resmsg_)
     {
         await Task.CompletedTask;
@@ -340,13 +481,24 @@ public class PacketMaker : MonoBehaviour
         return;
     }
 
+
+    /// <summary>
+    /// CharInfo를 요청하는 메시지의 응답메시지를 처리하는 함수. <br/>
+    /// 일반적으로 로그인 이후에 CharInfo를 요청하게 되므로 <br/>
+    /// UserData에 저장하고 현재 씬이 LoginScene이라면 UserData에 저장해야하는 데이터가 전부 저장되었는지 확인하고 씬을 변경합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
     private async Task HandleGetCharInfoResponse(ReqMessage reqmsg_, ResMessage resmsg_)
     {
         await Task.CompletedTask;
 
         UserData.instance.InitCharInfo(resmsg_.Msg);
 
-        if(UserData.instance.IsCompletelyLoaded())
+        Scene currentScene = SceneManager.GetActiveScene();
+
+        if(currentScene.name == "LoginScene" && UserData.instance.IsCompletelyLoadedCharInfo())
         {
             SceneManager.LoadScene("SelectCharacterScene");
         }
@@ -354,10 +506,19 @@ public class PacketMaker : MonoBehaviour
         return;
     }
 
+
+    /// <summary>
+    /// 캐릭터 생성을 위해 닉네임을 예약하는 요청에 대한 응답메시지를 처리하는 함수입니다. <br/>
+    /// 
+    /// 생성가능하다고 응답한 경우 해당 닉네임으로 생성하는 것이 맞는지 확인하는 패널을 생성합니다. <br/>
+    /// 예약에 실패한 경우 각각의 상황에 맞는 텍스트패널을 출력하여 사용자가 확인할 수 있게 합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
     private async Task HandleReserveNicknameResponse(ReqMessage reqmsg_, ResMessage resmsg_)
     {
-        await Task.CompletedTask; // async Task를 넣을 필요가 있을까?
-        Debug.Log($"PacketMaker::HandleReserveNicknameResponse : rescode : {resmsg_.ResCode}");
+        await Task.CompletedTask;
 
         switch (resmsg_.ResCode)
         {
@@ -382,16 +543,27 @@ public class PacketMaker : MonoBehaviour
         }
     }
 
+
+    /// <summary>
+    /// 예약한 닉네임에 대해 생성을 요청한 것에 대한 응답메시지를 처리하는 함수입니다. <br/>
+    /// 
+    /// 생성에 성공했다면 UserData의 CharList에 추가하며 캐릭터 선택화면으로 돌아갑니다. <br/>
+    /// 생성에 실패했다면 어떤 이유로 실패했는지 텍스트메시지를 생성합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
     private async Task HandleCreateCharResponse(ReqMessage reqmsg_, ResMessage resmsg_)
     {
         await Task.CompletedTask;
 
-        Debug.Log($"PacketMaker::HandleCreateCharResponse : rescode : {resmsg_.ResCode}");
-
         switch (resmsg_.ResCode)
         {
             case ResCode.SUCCESS:
-                // 생성 성공 처리
+                UserData.instance.AddCharList(resmsg_.Msg);
+
+                ReturnToCharlistPanel();
+
                 Debug.Log($"PacketMaker::HandleCreateCharResponse : SUCCESS!");
                 break;
 
@@ -416,6 +588,48 @@ public class PacketMaker : MonoBehaviour
         }
     }
 
+
+    /// <summary>
+    /// 캐릭터 선택창으로 돌아갑니다.
+    /// </summary>
+    private void ReturnToCharlistPanel()
+    {
+        Canvas canvas = FindAnyObjectByType<Canvas>();
+
+        if (canvas == null)
+        {
+            Debug.Log($"PacketMaker::ReturnToCharlistPanel : nullref.");
+            return;
+        }
+
+        Transform charlistPanel = canvas.transform.GetChild(0); // Charlist panel
+
+        if (charlistPanel.name != "CharlistPanel")
+        {
+            Debug.Log($"PacketMaker::ReturnToCharlistPanel : Cant Find CharlistPanel");
+            return;
+        }
+        charlistPanel.gameObject.SetActive(true);
+
+        Transform createCharPanel = canvas.transform.GetChild(1); // CreateChar Panel
+
+        if (createCharPanel.name != "CreateCharPanel")
+        {
+            Debug.Log($"PacketMaker::ReturnToCharlistPanel : Cant Find CreateCharPanel");
+            return;
+        }
+
+        createCharPanel.gameObject.SetActive(false);
+
+    }
+
+
+    /// <summary>
+    /// 캐릭터 닉네임 예약을 취소하는 요청의 응답메시지를 처리합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
     private async Task HandleCancelReserveNicknameResponse(ReqMessage reqmsg_, ResMessage resmsg_)
     {
         await Task.CompletedTask;
@@ -442,9 +656,268 @@ public class PacketMaker : MonoBehaviour
         }
     }
 
+
+    /// <summary>
+    /// 인벤토리 정보를 요청한 것에 대한 응답메시지를 처리합니다.
+    /// UserData에 인벤토리 정보 JSONStr을 저장합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
+    private async Task HandleGetInvenResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                UserData.GetCharInvenParam param = JsonUtility.FromJson<UserData.GetCharInvenParam>(reqmsg_.msg);
+
+                int charcode = param.Charcode;
+
+                UserData.instance.AddInvenJstr(charcode, resmsg_.Msg);
+                break;
+
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleGetInvenResponse : WRONG_PARAM!");
+                break;
+
+            case ResCode.SYSTEM_FAIL:
+                Debug.Log($"PacketMaker::HandleGetInvenResponse : SYSTEM_FAIL!");
+                break;
+
+            default:
+
+                break;
+
+        }
+
+
+        
+
+        return;
+    }
+
+
+    /// <summary>
+    /// 캐릭터 선택 요청에 대한 응답메시지를 처리합니다. <br/>
+    /// 
+    /// 캐릭터 선택 씬이 아니라면 그냥 종료합니다. <br/>
+    /// 해당 캐릭터의 인벤토리 정보가 수신되지 않았다면 인벤토리 정보를 요청하고 대기하는 함수를 호출합니다. <br/>
+    /// 인벤토리 정보도 정상적으로 수신되었다면 인벤토리패널에 정보를 담고 씬을 전환합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
+    private async Task HandleSelectCharResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        if(SceneManager.GetActiveScene().name != "SelectCharacterScene")
+        {
+            Debug.Log($"PacketMaker::HandleSelectCharResponse : not in select char scene.");
+            return;
+        }
+
+        switch(resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                //Debug.Log($"PacketMaker::HandleSelectCharResponse : SUCCESS!");
+                SelectCharParam param = JsonUtility.FromJson<SelectCharParam>(reqmsg_.msg);
+
+                await UserData.instance.WaitUntilInvenLoaded(param.Charcode);
+
+                string invenjstr = UserData.instance.GetInvenJstr(param.Charcode);
+
+                UserData.instance.SetSelectedCharNo(param.Charcode);
+                InventoryPanel.InitInvenInfo(invenjstr);
+
+                int mapCode = UserData.instance.GetMapCode();
+                SceneManager.LoadScene(mapCode.ToString());
+
+                break;
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleSelectCharResponse : WRONG_PARAM");
+                break;
+
+            case ResCode.SYSTEM_FAIL:
+                Debug.Log($"PacketMaker::HandleSelectCharResponse : SYSTEM_FAIL");
+                break;
+            case ResCode.WRONG_ORDER:
+                Debug.Log($"PacketMaker::HandleSelectCharResponse : WRONG_ORDER");
+                break;
+            default:
+                Debug.Log($"PacketMaker::HandleSelectCharResponse : Undefined Code");
+                break;
+        }
+    }
+
+
+    /// <summary>
+    /// 맵이동의 요청에 대한 응답메시지를 처리합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
+    private async Task HandleMoveMapResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                Debug.Log($"PacketMaker::HandleMoveMapResponse : SUCCESS!");
+
+                try
+                {
+                    PlayerCharacter.MoveMapParameter param = JsonUtility.FromJson<PlayerCharacter.MoveMapParameter>(reqmsg_.msg);
+
+                    UserData.instance.SetMapCode(param.MapCode);
+
+                    SceneManager.LoadScene(param.MapCode.ToString());
+                }
+                catch(Exception e)
+                {
+                    Debug.Log($"PacketMaker::HandleMoveMapResponse : {e.Message}, {reqmsg_.msg}");
+                    return;
+                }
+
+                break;
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleMoveMapResponse : WRONG_PARAM");
+                break;
+
+            case ResCode.WRONG_ORDER:
+                Debug.Log($"PacketMaker::HandleMoveMapResponse : WRONG_ORDER");
+                break;
+            case ResCode.UNDEFINED:
+                Debug.Log($"PacketMaker::HandleMoveMapResponse : UNDEFINED");
+                break;
+            default:
+                Debug.Log($"PacketMaker::HandleMoveMapResponse : Undefined Code");
+                break;
+        }
+
+        return;
+    }
+
+
+    /// <summary>
+    /// 상점정보 요청에 대한 응답메시지를 처리합니다. <br/>
+    /// 상점정보가 없어서 상점을 열 수 없는 경우에만 요청하므로 <br/>
+    /// 해당 응답메시지가 왔다면 ShopPanel에 정보를 담고 콜백함수를 호출합니다.
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
+    private async Task HandleGetSalesListResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                NonePlayerCharactor.GetSalesListParam stParam = JsonUtility.FromJson<NonePlayerCharactor.GetSalesListParam>(reqmsg_.msg);
+
+                ShopPanel.AddData(stParam.NPCCode, resmsg_.Msg);
+
+                NonePlayerCharactor.CallBackAfterNetworkResponse(stParam.NPCCode);
+
+                break;
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleGetSalesList : WRONG_PARAM");
+                break;
+            case ResCode.SYSTEM_FAIL:
+                Debug.Log($"PacketMaker::HandleGetSalesList : SYSTEM_FAIL");
+                break;
+            default:
+                Debug.Log($"PacketMaker::HandleGetSalesList : Undefined Code.");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 디버깅동작 요청이고 10000 고정이니까 대충 작성함
+    /// </summary>
+    /// <param name="reqmsg_"></param>
+    /// <param name="resmsg_"></param>
+    /// <returns></returns>
+    private async Task HandleSetGoldResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                InventoryPanel.Instance.SetGold(10000);
+                break;
+
+            case ResCode.REQ_FAIL:
+                Debug.Log($"PacketMaker::HandleSetGoldResponse : REQ_FAIL");
+                break;
+
+            default:
+                Debug.Log($"PacketMaker::HandleSetGoldResponse : Undefined rescode");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 아이템 구매 요청에 대한 응답메시지를 처리. <br/>
+    /// 인벤토리 정보를 갱신한다. <br/>
+    /// UserData의 InvenJstr도 갱신, InventoryPanel의 정보도 갱신. <br/>
+    /// 별도의 메시지로 Gold도 처리 (CharInfo).
+    /// </summary>
+    /// <param name="reqmsg_">요청메시지</param>
+    /// <param name="resmsg_">응답메시지</param>
+    /// <returns></returns>
+    private async Task HandleBuyItemResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                InventoryPanel.InitInvenInfo(resmsg_.Msg);
+
+                int charcode = UserData.instance.GetSelectedChar();
+
+                UserData.instance.RenewInvenJstr(charcode, resmsg_.Msg);
+
+                Debug.Log($"PacketMaker::HandleBuyItemResponse : SUCCESS!!");
+
+                break;
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleBuyItemResponse : WRONG_PARAM");
+                break;
+            case ResCode.WRONG_ORDER:
+                Debug.Log($"PacketMaker::HandleBuyItemResponse : WRONG_ORDER");
+                break;
+            case ResCode.REQ_FAIL:
+                TextMessage.CreateTextPanel("구매에 실패했습니다. 아이템창의 상태나 소지금을 확인하세요.");
+                break;
+            default:
+
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 서버에서 전파한 캐릭터들의 위치정보 처리.
+    /// </summary>
+    /// <param name="resmsg_"></param>
     private void HandlePosInfo(ResMessage resmsg_)
     {
         // 구현 필요
+        return;
+    }
+
+    /// <summary>
+    /// 서버에서 전파한 채팅 정보 처리. <br/>
+    /// ChatPanel에 문자열 추가.
+    /// </summary>
+    /// <param name="resmsg_">정보메시지</param>
+    private void HandleChat(ResMessage resmsg_)
+    {
+        ChatPanel.Instance.AddString(resmsg_.Msg);
         return;
     }
 }

@@ -3,6 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+
+/// <summary>
+/// Login Scene의 Login을 요청하는 버튼에 부착되는 스크립트.
+/// 
+/// 버튼이 클릭되면 LoginData의 정보를 받아와 서버에 요청한다.
+/// </summary>
 public class LoginButton : MonoBehaviour
 {
     private LoginData _loginData;

@@ -20,7 +20,7 @@ public class MonsterManager : MonoBehaviour
         }
     }
 
-    public void SpawnMonster(int idx, int monsterCode_, long healthPoint_, Vector2 position_, int target = 0)
+    public void SpawnMonster(int idx, int monsterCode_, long healthPoint_, Vector2 position_)
     {
         GameObject instance = Instantiate(prefab);
 

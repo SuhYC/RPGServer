@@ -3,6 +3,19 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 
+/// <summary>
+/// 캐릭터의 이름을 입력한 후
+/// 해당 캐릭터가 생성가능하면 출력되는 창의 스크립트.
+/// 서버에 해당 캐릭터가 생성가능여부를 요청하면서 동시에 분산락을 이용해 해당 캐릭터이름에 예약을 걸게 되므로
+/// 해당 예약이 지속되는 동안 다른 유저가 닉네임을 가로챌 수 없다.
+/// 해당 창에서 캐릭터 생성에 동의하면 최종적으로 캐릭터를 생성한다.
+/// 해당 창에서 캐릭터 생성을 거부하면 예약을 해제한다.
+/// 
+/// 해당 클래스는 예약을 건 닉네임을 입력받아
+/// 닉네임으로 텍스트를 초기화하는 클래스이다.
+/// 
+/// 생성 동의버튼과 거부버튼에 동시에 닉네임으로 초기화할 수 있게하여 이후 서버요청을 가능하게 한다.
+/// </summary>
 public class CheckNicknamePanel : MonoBehaviour
 {
     private TMP_Text _Text;
@@ -21,12 +34,12 @@ public class CheckNicknamePanel : MonoBehaviour
     /// <summary>
     /// 파라미터는 CreateCharParam의 JSON문자열을 적을 것
     /// </summary>
-    /// <param name="text_"></param>
+    /// <param name="text_">CreateCharParam의 JSON문자열</param>
     public static void CreateTextPanel(string text_)
     {
         if (_nickPanel == null)
         {
-            _nickPanel = Resources.Load<GameObject>("Prefabs/NicknameCheckPanel");
+            _nickPanel = Resources.Load<GameObject>("Prefabs/UI/NicknameCheckPanel");
         }
 
         GameObject obj = Instantiate(_nickPanel);
@@ -95,36 +108,5 @@ public class CheckNicknamePanel : MonoBehaviour
         }
 
         return;
-    }
-
-    public void OnClick()
-    {
-        if (canvas == null)
-        {
-            canvas = FindAnyObjectByType<Canvas>();
-        }
-
-        if (canvas == null)
-        {
-            Debug.Log($"CheckNicknamePanel::Onclick : nullref.");
-            return;
-        }
-
-        Transform charlistPanel = canvas.transform.GetChild(0); // Charlist panel
-
-        if (charlistPanel.name != "CharlistPanel")
-        {
-            Debug.Log($"CheckNicknamePanel::Onclick : Cant Find CharlistPanel");
-            return;
-        }
-        charlistPanel.gameObject.SetActive(true);
-
-        Transform createCharPanel = canvas.transform.GetChild(1); // CreateChar Panel
-
-        if (createCharPanel.name != "CreateCharPanel")
-        {
-            Debug.Log($"CheckNicknamePanel::Onclick : Cant Find CreateCharPanel");
-            return;
-        }
     }
 }

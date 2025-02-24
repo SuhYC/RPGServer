@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
+/// <summary>
+/// 캐릭터 생성을 위해 닉네임을 적는 InputField를 위한 스크립트.
+/// InputField에 입력한 값을 가지고 다른 버튼과 상호작용한다.
+/// </summary>
 public class CreateCharData : MonoBehaviour
 {
     private TMPro.TMP_InputField _charname;

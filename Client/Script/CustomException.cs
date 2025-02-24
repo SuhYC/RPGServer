@@ -3,6 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// 해당 프로젝트를 위해 임의로 작성한 사용자정의예외에 대한 정보가 담긴 스크립트.
+/// </summary>
 public class CustomException : MonoBehaviour
 {
     /// <summary>
@@ -19,5 +22,15 @@ public class CustomException : MonoBehaviour
     public class NotFoundInputObjectException : Exception
     {
         public NotFoundInputObjectException() : base("InputObject Not Found.") { }
+    }
+
+    public class NotFoundInCharlistException : Exception
+    {
+        public NotFoundInCharlistException() : base("CharSlot Not Found.") { }
+    }
+
+    public class CantGetMapCodeException : Exception
+    {
+        public CantGetMapCodeException() : base("Cant Get Map Code.") { }
     }
 }

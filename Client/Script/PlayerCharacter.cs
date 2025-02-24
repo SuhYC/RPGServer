@@ -1,7 +1,15 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using System;
+using System.Threading.Tasks;
 
+/// <summary>
+/// 플레이어블 캐릭터의 조작을 처리하는 스크립트. <br/>
+/// 리지드바디 처리
+/// 키보드입력 처리
+/// 추후 키세팅 시스템을 만들 가능성에 의해 KeyCode를 따로 저장해두고 사용하자.
+/// </summary>
 public class PlayerCharacter : MonoBehaviour
 {
     private bool _isGrounded;
@@ -19,6 +27,9 @@ public class PlayerCharacter : MonoBehaviour
     Rigidbody2D rb;
     SpriteRenderer sr;
 
+    LayerMask layerMask;
+    Vector2 CharSize;
+
     const float MAX_SPEED = 1.0f;
     void Awake()
     {
@@ -26,6 +37,11 @@ public class PlayerCharacter : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         sr = GetComponent<SpriteRenderer>();
         LastPoint = rb.position;
+        
+        BoxCollider2D boxCollider2D = GetComponent<BoxCollider2D>();
+        CharSize = boxCollider2D.size;
+
+        layerMask = LayerMask.GetMask("Portal");
     }
 
     // Update is called once per frame
@@ -39,6 +55,11 @@ public class PlayerCharacter : MonoBehaviour
         if(Input.GetKeyDown(AttackKey))
         {
             Attack();
+        }
+
+        if(Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            UpArrowKey();
         }
 
         CharacterImageFlip();
@@ -151,4 +172,50 @@ public class PlayerCharacter : MonoBehaviour
         // 정해진 범위의 정해진 마릿수만큼의 몬스터 긁어오기
         // 긁어온 몬스터에 정해진 데미지 주었다고 서버에 전달하기 (몬스터 사망판정은 서버가 한 후 클라이언트에 전달)
     }
+
+    public class MoveMapParameter
+    {
+        public int MapCode;
+
+        public MoveMapParameter(int mapCode)
+        {
+            MapCode = mapCode;
+        }
+    }
+
+    private void UpArrowKey()
+    {
+        Collider2D[] colliders = Physics2D.OverlapBoxAll(transform.position, CharSize, 0f, layerMask);
+
+        foreach(Collider2D collider in colliders)
+        {
+            if(!collider.isTrigger)
+            {
+                continue;
+            }
+
+            if(collider.transform.name == "Portal")
+            {
+                Portal portal = collider.transform.GetComponent<Portal>();
+                if(portal != null)
+                {
+                    MoveMapParameter req = new MoveMapParameter(portal._toMapCode);
+                    string str = JsonUtility.ToJson(req);
+                    string msg = PacketMaker.instance.ToReqMessage(PacketMaker.ReqType.MOVE_MAP, str);
+
+                    try
+                    {
+                        Task task = NetworkManager.Instance.SendMsg(msg);
+                    }
+                    catch(Exception e)
+                    {
+                        Debug.Log($"PlayerCharacter::UpArrowKey : {e.Message}");
+                        return;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
 }

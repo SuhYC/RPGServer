@@ -3,6 +3,11 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+
+/// <summary>
+/// 회원가입버튼. <br/>
+/// 회원가입을 위해 입력한 정보를 담고있는 SignUpData로부터 정보를 가져와 서버에 요청한다.
+/// </summary>
 public class SignUpButton : MonoBehaviour
 {
     SignUpData signUpData;
@@ -17,6 +22,9 @@ public class SignUpButton : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// SignUpData로부터 정보를 가져와 서버에 요청한다.
+    /// </summary>
     public async void OnClick()
     {
         if (signUpData == null)
