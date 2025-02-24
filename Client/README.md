@@ -1,13 +1,46 @@
 # 클라이언트 파트 진행 상황
 async/await, tcpClient 활용하여 서버와 통신 <br/>
 서버 <-> 클라이언트 간의 패킷 전달 시 패킷 분할 현상 해결 <br/>
+
 SignUp 결과 수신 및 패킷처리 까지 완료 (이후 팝업 메시지를 띄워 결과 확인.)<br/>
+
 SignIn 결과 수신 및 정보 요청 후 수신 완료 (SignIn -> GetCharList -> GetCharInfo)<br/>
+
 GetCharList로 CharCode 리스트를 수신한 뒤, 해당 정보로 다시 GetCharInfo 요청 (캐릭터가 아직 없는 계정은 바로 씬 전환.)<br/>
+
 GetCharInfo로 수신한 정보를 저장한 뒤, 모든 CharList의 CharInfo를 수신 완료했으면 캐릭터 선택창으로 씬 전환. <br/>
+
 CreateChar 과정 구현. (ReserveCharName -> CreateChar) ReserveCharName을 호출한 뒤 생성가능한 경우 생성여부 재확인 창을 띄운다. 재확인창에서 생성을 선택한 경우 최종적으로 캐릭터가 생성된다. <br/>
+
 ReserveCharName으로 생성가능한 닉네임에 예약을 건 후 생성여부를 재확인한다. 생성창에서 닉네임을 입력하고 버튼을 누르면 호출한다. <br/>
+
 CancelCharNameReserve로 예약한 닉네임의 예약을 취소할 수 있다. 재확인창에서 생성을 거부하는 경우 호출한다. <br/>
+
+GetInventory로 특정 캐릭터의 인벤토리 정보를 가져올 수 있다. <br/>
+
+SelectChar로 특정 캐릭터로 접속하도록 요청할 수 있다. <br/>
+해당 캐릭터의 정보가 모두 수신되었는지 확인하고 해당 캐릭터의 CharInfo에 있는 LastMapCode를 조회하여 해당하는 씬으로 씬전환한다. <br/>
+
+#### 게임씬으로 진입한 이후
+
+MoveMap으로 서버에 맵 이동을 요청하고, 서버에서 MapEdge테이블을 확인해 정상적으로 이동가능한 요청이라면 승인한다. <br/>
+클라이언트에서는 각 씬에 포탈 프리팹을 배치하고 public int로 선언된 toMapCode를 수정하여 이동할 수 있도록 만들어둔다. <br/>
+이후 PlayerCharacter 스크립트에서 UpArrowKey를 확인하고 오브젝트와 겹쳐있는 포탈 오브젝트를 가져와 toMapCode를 조회하고 MoveMap요청을 서버로 송신한다.
+
+GetSalesList로 특정 npccode에 맞는 구매목록을 서버에 요청할 수 있다. <br/>
+서버에서는 MapNPCInfo테이블을 확인하여 현재 위치한 맵에서 해당 NPC정보를 받아도 되는지 확인하고 승인한다. <br/>
+SalesList테이블을 확인하여 해당 NPC가 판매하는 아이템들을 조회하고, ItemTable테이블을 확인하여 아이템의 가격을 조회하여 JSON문자열로 만들어 클라이언트에 전송한다. <br/>
+클라이언트에서는 각 씬에 npc 프리팹을 배치하고, public int로 선언된 npcCode를 수정하여 구매목록을 가져올 수 있도록 만들어둔다. <br/>
+
+BuyItem으로 특정 npc를 통해 특정 아이템을 구매하도록 서버에 요청할 수 있다. <br/>
+서버에서는 MapNPCInfo테이블을 확인하여 현재 위치한 맵에서 해당 NPC를 만날 수 있는지 확인하고, <br/>
+SalesList테이블을 확인하여 해당 NPC가 해당 아이템을 판매하는지 확인하고, <br/>
+해당 유저의 CharInfo와 Inventory를 Redis에서 분산락을 이용해 상호배제한 후 수정을 시도하여 구매할 수 있는지 확인하여 승인한다. <br/>
+클라이언트에서는 npc프리팹을 클릭하여 ShopPanel을 열고, 해당 패널에서 ShopSlot을 클릭하여 구매요청을 할 수 있도록 만들어둔다. <br/>
+
+Chat으로 같은 맵에 존재하는 유저가 말한 채팅을 수신할 수 있도록하고, 같은 맵에 존재하는 유저에게 채팅을 송신할 수 있도록 한다. <br/>
+
+SetGold로 디버깅을 위해 현재 골드를 1만으로 수정할 수 있도록 한다. 당연히 서버와 클라이언트 모두 정보를 수정할 수 있도록 한다.
 
 ## 패킷 분할
 [MTU](https://github.com/SuhYC/Lesson/blob/main/Network/MTU.md)관련 내용과 연계되는 것으로 추정 (혹은 TCP 로직 처리 중에 분할되었을수도 있고..) <br/>
