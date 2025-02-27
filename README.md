@@ -3,6 +3,7 @@ cpp project.
 
 ## skills
 C++ IOCP Server <br/>
+C# Unity Client <br/>
 Redis with hiredis <br/>
 MSSQL with odbc <br/>
 rapidJson <br/>
@@ -39,6 +40,15 @@ Redis는 트랜잭션의 개념이 없다. <br/>
 정확하게는 동역학의 변위 공식을 적용하는 것이 맞겠으나, 가속도를 포함한 적분공식을 사용하기는 과투자인 것 같아 <br/>
 간단하게나마 속도를 고정하고 ```pos + vel * elapsedTime```정도로만 적용해보자.<br/>
 나중에 더 정확한 공식이 필요하면 수정하도록 한다.
+
+## EUC-KR 인코딩
+한글문자를 포함한 C++ <-> C# 통신을 위해 인코딩을 C++에 맞추어 EUC-KR로 통일하였다. <br/>
+C#에서 전송시 인코딩을 변경하여 전송. <br/>
+단, MSSQL ODBC에서 ```SQLExecDirect```함수가 ```SQLWCHAR[]``` 타입의 쿼리를 받으므로 해당 부분에서만 다시 UTF-16으로 인코딩변경하여 작성한다.
+
+## C# Client async/await
+네트워크 IO와 같은 대기작업에서 async/await를 사용하였다. <br/>
+동시에 async/await환경에서 임계영역 문제가 생기지 않도록 SemaphoreSlim을 사용하여 비동기 락을 사용.
 
 ## Todo
 ```openssl```사용하여 전송데이터 암호화 <br/>
