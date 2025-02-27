@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vector.hpp"
+#include "Json.hpp"
 
 // 필드에 뿌려진 아이템에 대한 정보이다.
 // 1번 아이템을 Gold로 표기해야겠다. (0번 아이템은 빈칸)
@@ -28,6 +29,13 @@ public:
 	int GetCount() const { return m_count; }
 	int GetOwner() const { return m_ownerCharcode; }
 	Vector2 GetPosition() const { return m_position; }
+
+	void GetInfo(CreateObjectResponse& out_) const
+	{
+		out_.itemcode = m_itemCode;
+		out_.count = m_count;
+		out_.position = m_position;
+	}
 
 	bool CanGet(const int charcode_) const
 	{

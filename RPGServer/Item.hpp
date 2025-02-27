@@ -24,6 +24,12 @@ public:
 		return itemcode < other_.itemcode;
 	}
 
+	/// <summary>
+	/// 특정한 아이템으로 초기화
+	/// </summary>
+	/// <param name="itemcode_"></param>
+	/// <param name="extime_"></param>
+	/// <param name="count_"></param>
 	void Init(const int itemcode_, const time_t extime_, const int count_)
 	{
 		itemcode = itemcode_;
@@ -32,6 +38,9 @@ public:
 		return;
 	}
 
+	/// <summary>
+	/// 빈슬롯으로 초기화
+	/// </summary>
 	void Init()
 	{
 		Init(0, 0, 0);

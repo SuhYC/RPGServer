@@ -4,6 +4,7 @@
 #include "RingBuffer.hpp"
 #include <queue>
 #include <mutex>
+#include <windows.h>
 
 #define GET_ACCEPTEX_SOCKADDRS( lpOutputBuffer, dwBytesReceived, lpLocalAddress, lpRemoteAddress ) \
     do { \
@@ -15,7 +16,7 @@
         memcpy(pRemote, lpOutputBuffer + localSize, remoteSize); \
     } while (0)
 
-const int MAX_RINGBUFFER_SIZE = 1000;
+const int MAX_RINGBUFFER_SIZE = 4000;
 
 class Connection
 {
@@ -121,7 +122,8 @@ public:
 
 		m_SendBuffer.enqueue(pData_->GetBlock()->pData, pData_->GetBlock()->dataSize);
 
-		if (m_SendBuffer.Size() == pData_->GetBlock()->dataSize)
+		//if (m_SendBuffer.Size() == pData_->GetBlock()->dataSize) // 송신중인 데이터를 빼다보니 문제가 생길것 같다.
+		if(m_SendingBuffer[0] == NULL)
 		{
 			SendIO();
 		}
@@ -131,7 +133,7 @@ public:
 
 	bool SendIO()
 	{
-		ZeroMemory(m_SendingBuffer, MAX_SOCKBUF);
+		
 		int datasize = m_SendBuffer.dequeue(m_SendingBuffer, MAX_SOCKBUF-1);
 
 		ZeroMemory(&m_SendOverlapped, sizeof(stOverlappedEx));
@@ -165,9 +167,11 @@ public:
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 
-		if (!m_SendBuffer.IsEmpty())
+		ZeroMemory(m_SendingBuffer, MAX_SOCKBUF); // 송신완료되었으니 버퍼를 비운다.
+
+		if (!m_SendBuffer.IsEmpty()) // 송신할 데이터가 남아있으니
 		{
-			SendIO();
+			SendIO(); // 이어서 송신한다.
 		}
 
 		return;
@@ -235,10 +239,39 @@ public:
 		return m_RecvBuffer.enqueue(str_, size_);
 	}
 
-	int GetPartialMessage(char* out_, int maxsize_)
+	std::string GetReqMessage()
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
-		return m_RecvBuffer.dequeue(out_, maxsize_);
+
+		char cstr[MAX_SOCKBUF + 1] = { 0 };
+
+		int len = m_RecvBuffer.dequeue(cstr, MAX_SOCKBUF);
+
+		if (len == 0)
+		{
+			return std::string();
+		}
+
+		std::string str(cstr);
+
+		std::string ret;
+		CheckStringSize(str, ret); // 재단하고 남은 문자열은 str, 처리할 수 있는 문자열은 ret.
+
+		// 남은 데이터는 다시 저장한다.
+		strcpy_s(cstr, str.c_str());
+		m_RecvBuffer.enqueue(cstr, str.length());
+
+		// UTF-8로 인코딩 된 문자열을 CP949 (CP_ACP를 통해 PC설정값 호출)로 인코딩해서 리턴
+
+		int wideStrSize = MultiByteToWideChar(CP_UTF8, 0, ret.c_str(), -1, NULL, 0);
+		std::wstring wideStr(wideStrSize, 0);
+		MultiByteToWideChar(CP_UTF8, 0, ret.c_str(), -1, &wideStr[0], wideStrSize);
+
+		int utf8StrSize = WideCharToMultiByte(CP_ACP, 0, wideStr.c_str(), -1, NULL, 0, NULL, NULL);
+		std::string acpStr(utf8StrSize, 0);
+		WideCharToMultiByte(CP_ACP, 0, wideStr.c_str(), -1, &acpStr[0], utf8StrSize, NULL, NULL);
+
+		return ret;
 	}
 
 private:
@@ -276,6 +309,131 @@ private:
 		}
 
 		return true;
+	}
+
+	bool CheckStringSize(std::string& str_, std::string& out_)
+	{
+		if (str_[0] != '[')
+		{
+			std::cerr << "Connection::CheckStringSize : Not Started with [\n";
+			std::cerr << "Connection::CheckStringSize : string : " << str_ << '\n';
+
+			// 한번 이상한 데이터가 들어오면 그냥 지워버린다
+
+			str_ = std::string();
+
+			return false;
+		}
+
+		size_t pos = str_.find(']');
+
+		if (pos == std::string::npos)
+		{
+			return false;
+		}
+
+		try
+		{
+			std::string header = str_.substr(1, pos);
+			int size = std::stoi(header);
+			if (str_.size() > pos + size)
+			{
+				out_ = str_.substr(pos + 1, size);
+				str_ = str_.substr(pos + size + 1);
+
+				return true;
+			}
+		}
+		catch (std::invalid_argument& e)
+		{
+			std::cerr << "Connection::CheckStringSize : " << e.what();
+		}
+		catch (...)
+		{
+			std::cerr << "Connection::CheckStringSize : Some Err\n";
+		}
+
+		return false;
+	}
+
+	bool CheckWstringSize(std::wstring& str_, std::wstring& out_)
+	{
+		if (str_[0] != '[')
+		{
+			std::wcerr << L"Connection::CheckWStringSize : Not Started with [\n";
+			std::wcerr << L"Connection::CheckWStringSize : wstring : " << str_ << L'\n';
+			return false;
+		}
+
+		size_t pos = str_.find(']');
+
+		if (pos == std::string::npos)
+		{
+			return false;
+		}
+
+		try
+		{
+			std::wstring header = str_.substr(1, pos);
+			int size = std::stoi(header);
+
+			if (str_.size() > pos + size)
+			{
+				out_ = str_.substr(pos + 1, size);
+				str_ = str_.substr(pos + size + 1);
+
+				return true;
+			}
+		}
+		catch (std::invalid_argument& e)
+		{
+			std::cerr << "Connection::CheckWStringSize : " << e.what();
+		}
+		catch (...)
+		{
+			std::cerr << "Connection::CheckWStringSize : Some Err\n";
+		}
+
+		return false;
+	}
+
+	std::wstring utf8_to_wstring(const std::string& str) {
+		std::wstring result;
+		int length = str.length();
+		int i = 0;
+
+		while (i < length) {
+			unsigned char c = str[i];
+
+			// 1바이트 문자 (ASCII 범위)
+			if (c <= 0x7F) {
+				result.push_back(c);
+				i++;
+			}
+			// 2바이트 문자
+			else if ((c & 0xE0) == 0xC0) {
+				unsigned char c2 = str[i + 1];
+				result.push_back(((c & 0x1F) << 6) | (c2 & 0x3F));
+				i += 2;
+			}
+			// 3바이트 문자
+			else if ((c & 0xF0) == 0xE0) {
+				unsigned char c2 = str[i + 1];
+				unsigned char c3 = str[i + 2];
+				result.push_back(((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
+				i += 3;
+			}
+			// 4바이트 문자
+			else if ((c & 0xF8) == 0xF0) {
+				unsigned char c2 = str[i + 1];
+				unsigned char c3 = str[i + 2];
+				unsigned char c4 = str[i + 3];
+				result.push_back(((c & 0x07) << 18) | ((c2 & 0x3F) << 12) | ((c3 & 0x3F) << 6) | (c4 & 0x3F));
+				i += 4;
+			}
+		}
+
+		return result;
 	}
 
 	SOCKET m_ListenSocket;

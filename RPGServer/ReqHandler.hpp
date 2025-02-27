@@ -48,6 +48,9 @@ public:
 		Actions[MessageType::CANCEL_CHAR_NAME_RESERVE] = &ReqHandler::HandleCancelCharNameReserve;
 		Actions[MessageType::CREATE_CHAR] = &ReqHandler::HandleCreateChar;
 		Actions[MessageType::SELECT_CHAR] = &ReqHandler::HandleSelectChar;
+		Actions[MessageType::GET_INVEN] = &ReqHandler::HandleGetInven;
+		Actions[MessageType::GET_SALESLIST] = &ReqHandler::HandleGetSalesList;
+
 
 		// ----- 인게임 -----
 		Actions[MessageType::PERFORM_SKILL] = &ReqHandler::HandlePerformSkill;
@@ -58,6 +61,9 @@ public:
 		Actions[MessageType::MOVE_MAP] = &ReqHandler::HandleMoveMap;
 		Actions[MessageType::CHAT_EVERYONE] = &ReqHandler::HandleChatEveryone;
 		Actions[MessageType::POS_INFO] = &ReqHandler::HandlePosInfo;
+
+		// ----- 디버깅 테스트용 (배포시 제거 후 배포) -----
+		Actions[MessageType::DEBUG_SET_GOLD] = &ReqHandler::HandleSetGold;
 	}
 
 	void Init(const unsigned short MaxClient_)
@@ -66,9 +72,10 @@ public:
 		m_UserManager.ReleaseInfo = releaseInfoFunc;
 		m_UserManager.Init(MaxClient_);
 
-		m_MapManager.AllocatePacket = this->AllocatePacket;
-		m_MapManager.DeallocatePacket = this->DeallocatePacket;
-		m_MapManager.SendMsgFunc = this->SendMsgFunc;
+		auto SendInfo = [this](const int userindex_, RESULTCODE rescode_, std::string& msg_) {SendInfoMsg(userindex_, rescode_, msg_); };
+		auto SendInfoToUsers = [this](std::map<int, User*>& users, RESULTCODE rescode_, std::string& msg_, int exceptUsercode_ = 0) {SendInfoMsgToUsers(users, rescode_, msg_, exceptUsercode_); };
+		m_MapManager.SendInfoFunc = SendInfo;
+		m_MapManager.SendInfoToUsersFunc = SendInfoToUsers;
 	}
 
 	~ReqHandler()
@@ -116,6 +123,12 @@ public:
 		// 변동사항을 기록하고 객체를 반환한다.
 		if (pInfo != nullptr)
 		{
+			RenewInfo(*pInfo);
+
+			RPG::Map* pMap = m_MapManager.GetMap(pInfo->LastMapCode);
+
+			pMap->UserExit(connidx_);
+
 			m_DB.UpdateCharInfo(pInfo);
 			m_DB.ReleaseObject(pInfo);
 		}
@@ -178,7 +191,16 @@ private:
 
 		pUser->SetUserCode(nRet);
 
-		std::string strCharList = m_DB.GetCharList(nRet);
+		std::string strCharList;
+		try
+		{
+			strCharList = m_DB.GetCharList(nRet);
+		}
+		catch (ToJsonException e)
+		{
+			std::cerr << "ReqHandler::HandleSignin : ToJsonException : " << e.what() << '\n';
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::UNDEFINED);
+		}
 
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, strCharList);
 	}
@@ -247,7 +269,16 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_ORDER);
 		}
 
-		std::string strCharList = m_DB.GetCharList(usercode);
+		std::string strCharList;
+		try
+		{
+			strCharList = m_DB.GetCharList(usercode);
+		}
+		catch (ToJsonException e)
+		{
+			std::cerr << "ReqHandler::HandleGetCharList : ToJsonException : " << e.what() << '\n';
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::UNDEFINED);
+		}
 
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, strCharList);
 	}
@@ -339,12 +370,16 @@ private:
 		}
 
 		// 시작맵 코드를 아직 안정했다. 여러맵에서 시작하게 할까 아니면 한 맵에서만 시작할까
-		if (!m_DB.CreateCharactor(pUser->GetUserCode(), stParam.CharName, 100000000))
+		int charcode = m_DB.CreateCharactor(pUser->GetUserCode(), stParam.CharName, 100000000);
+		if (charcode == -1)
 		{
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
 		}
 
-		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+		// 생성한 캐릭터의 CharInfo 전달
+		std::string jstr = m_DB.GetCharInfoJsonStr(charcode);
+
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, jstr);
 	}
 
 	RESULTCODE HandleSelectChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -357,7 +392,19 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
 		}
 
-		std::string strList = m_DB.GetCharList(pUser->GetUserCode());
+		int usercode = pUser->GetUserCode();
+		
+		std::string strList;
+		try
+		{
+			strList = m_DB.GetCharList(usercode);
+		}
+		catch (ToJsonException e)
+		{
+			std::cerr << "ReqHandler::HandleGetCharList : ToJsonException : " << e.what() << '\n';
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::UNDEFINED);
+		}
+
 		CharList stCharList;
 		if (!m_JsonMaker.ToCharList(strList, stCharList))
 		{
@@ -371,6 +418,11 @@ private:
 		}
 
 		CharInfo* pInfo = m_DB.GetCharInfo(stParam.charcode);
+
+		if (pInfo == nullptr)
+		{
+			std::cerr << "ReqHandler::HandleSelectChar : info nullptr\n";
+		}
 
 		pUser->SetCharInfo(pInfo);
 
@@ -390,6 +442,24 @@ private:
 		pMap->UserEnter(userindex_, pUser);
 
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+	}
+
+	RESULTCODE HandleGetInven(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		GetInvenParameter stParam;
+		if (!m_JsonMaker.ToGetInvenParameter(param_, stParam))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
+		}
+		
+		std::string ret;
+
+		if (!m_DB.GetInventory(stParam.charcode, ret))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
+		}
+
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, ret);
 	}
 
 	// 클라이언트에서 자기 데미지는 시간변수를 이용해 난수를 이용한 시뮬레이션을 해도 될듯..
@@ -460,7 +530,10 @@ private:
 	RESULTCODE HandleGetObject(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		GetObjectParameter stParam;
-		m_JsonMaker.ToGetObjectParameter(param_, stParam);
+		if (!m_JsonMaker.ToGetObjectParameter(param_, stParam))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
+		}
 
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -482,6 +555,26 @@ private:
 		m_MapManager.ReleaseItemObject(itemobj);
 
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+	}
+
+	RESULTCODE HandleGetSalesList(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		GetSalesListParameter stParam;
+
+		if (!m_JsonMaker.ToGetSalesListParameter(param_, stParam))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
+		}
+
+		std::string res = m_DB.GetSalesList(stParam.npccode);
+
+		// 무언가 오류가 있었다.
+		if (res.empty())
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
+		}
+
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, res);
 	}
 
 	RESULTCODE HandleBuyItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -527,7 +620,14 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
 		}
 
-		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+		std::string strInven;
+
+		if (!m_DB.GetInventory(pUser->GetCharCode(), strInven))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
+		}
+
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, strInven);
 	}
 
 	RESULTCODE HandleDropItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -548,6 +648,8 @@ private:
 		{
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
 		}
+
+		
 
 		RPG::Map* pMap = m_MapManager.GetMap(stParam.mapcode);
 
@@ -595,13 +697,30 @@ private:
 
 		// 맵 이동
 		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
+		if (pMap == nullptr)
+		{
+			std::cerr << "ReqHandler::HandleMoveMap : Failed to Get Map pointer\n";
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::UNDEFINED);
+		}
+
 		pMap->UserExit(userindex_);
 		pMap = m_MapManager.GetMap(stParam.tomapcode);
+
+		if (pMap == nullptr)
+		{
+			std::cerr << "ReqHandler::HandleMoveMap : Failed to Get Map Pointer\n";
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::UNDEFINED);
+		}
 
 		// 해당 맵에 처음 들어오는 경우 초기화를 해주어야한다.
 		if (pMap->IsNew())
 		{
 			// --초기화
+			// DB 조회 및 스폰 정보 적용
+			//pMap->InitSpawnInfo();
+
+			// 기타 정보 초기화
+			pMap->Init();
 		}
 
 		pMap->UserEnter(userindex_, pUser);
@@ -609,15 +728,20 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
-	RESULTCODE HandleChatEveryone(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleSetGold(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
-		ChatEveryoneParameter stParam;
-
-		if (!m_JsonMaker.ToChatEveryoneParameter(param_, stParam))
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
+		int charcode = pUser->GetCharCode();
+		if (!m_DB.DebugSetGold(charcode))
 		{
-			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
 		}
 
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+	}
+
+	RESULTCODE HandleChatEveryone(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
 		RPG::Map* pMap = m_MapManager.GetMap(pUser->GetMapCode());
@@ -628,6 +752,16 @@ private:
 		}
 
 		// --해당 맵에 전파
+
+		std::ostringstream oss;
+
+		std::string nickname = pUser->GetCharName();
+
+		oss << "[" << nickname << "] : " + param_;
+
+		std::string msg = oss.str();
+
+		pMap->NotifyChatToAll(msg);
 
 		return RESULTCODE::SUCCESS;
 	}
@@ -698,6 +832,134 @@ private:
 
 		// 송신 성공
 		return resCode_;
+	}
+
+	void SendInfoMsgToUsers(std::map<int, User*>& users, RESULTCODE rescode_, std::string& msg_, int exceptUsercode_ = 0)
+	{
+		ResMessage stResultMsg{ 0, rescode_, msg_ };
+		std::string jsonmsg;
+		if (!m_JsonMaker.ToJsonString(stResultMsg, jsonmsg))
+		{
+			std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Make Jsonstr\n";
+			return;
+		}
+
+		PacketData* packet = AllocatePacket();
+		if (packet == nullptr)
+		{
+			std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Allocate Packet\n";
+			return;
+		}
+
+		auto first = users.begin();
+
+		bool bExceptFirst = true;
+
+		if (first->second == nullptr)
+		{
+			std::cerr << "ReqHandler::SendInfoMsgToUsers : User* null ref.\n";
+		}
+		else
+		{
+			bExceptFirst = (first->second->GetUserCode() == exceptUsercode_);
+		}
+
+		packet->Init(first->first, jsonmsg);
+
+		for (auto& itr = ++first; itr != users.end(); itr++)
+		{
+			if (itr->second == nullptr)
+			{
+				std::cerr << "ReqHandler::SendInfoMsgToUsers : User* null ref.\n";
+				continue;
+			}
+
+			if (itr->second->GetUserCode() == exceptUsercode_)
+			{
+				std::cout << "ReqHandler::SendInfoMsgToUsers : except usercode : " << itr->second->GetUserCode() << '\n';
+				continue;
+			}
+
+			PacketData* tmpPacket = AllocatePacket();
+
+			if (tmpPacket == nullptr)
+			{
+				DeallocatePacket(packet);
+				std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Allocate Packet\n";
+				return;
+			}
+
+			tmpPacket->Init(packet, itr->first);
+			if (!SendMsgFunc(tmpPacket))
+			{
+				// 송신 실패
+				DeallocatePacket(packet);
+				DeallocatePacket(tmpPacket);
+				std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Send Msg\n";
+				return;
+			}
+		}
+
+		if (bExceptFirst)
+		{
+			std::cout << "ReqHandler::SendInfoMsgToUsers : except usercode\n";
+			return;
+		}
+
+		if (!SendMsgFunc(packet))
+		{
+			// 송신 실패
+			DeallocatePacket(packet);
+			std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Send Msg\n";
+		}
+
+		return;
+	}
+
+	void SendInfoMsg(const int userindex_, RESULTCODE rescode_, std::string& msg_)
+	{
+		ResMessage stResultMsg{ 0, rescode_, msg_ };
+		std::string jsonmsg;
+		if (!m_JsonMaker.ToJsonString(stResultMsg, jsonmsg))
+		{
+			std::cerr << "ReqHandler::SendInfoMsg : Failed to Make Jsonstr\n";
+			return;
+		}
+
+		PacketData* packet = AllocatePacket();
+		if (packet == nullptr)
+		{
+			std::cerr << "ReqHandler::SendInfoMsg : Failed to Allocate Packet\n";
+			return;
+		}
+
+		packet->Init(userindex_, jsonmsg);
+
+		if (!SendMsgFunc(packet))
+		{
+			// 송신 실패
+			DeallocatePacket(packet);
+			std::cerr << "ReqHandler::SendInfoMsg : Failed to Send Msg\n";
+		}
+
+		return;
+	}
+
+	void RenewInfo(CharInfo& info_)
+	{
+		if (info_.CharNo == 0)
+		{
+			std::cerr << "ReqHandler::RenewInfo : CharNo Can't Be Zero.\n";
+			return;
+		}
+
+		CharInfo* info = m_DB.GetCharInfo(info_.CharNo);
+
+		info_ = *info;
+
+		m_DB.ReleaseObject(info);
+
+		return;
 	}
 
 	MapManager m_MapManager;

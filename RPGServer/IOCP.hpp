@@ -99,16 +99,16 @@ public:
 		return;
 	}
 
-	int GetRemainConnRecvBuffer(const int connectionIndex_, char* out_, int maxsize_)
-	{
-		Connection* conn = GetConnection(connectionIndex_);
-		return conn->GetPartialMessage(out_, maxsize_);
-	}
-
-	bool StoreRemainMsg(const int connectionIndex_, char* msg_, int size_)
+	bool StoreMsg(const int connectionIndex_, char* msg_, int size_)
 	{
 		Connection* conn = GetConnection(connectionIndex_);
 		return conn->StorePartialMessage(msg_, size_);
+	}
+
+	std::string GetMsg(const int connectionIndex_)
+	{
+		Connection* conn = GetConnection(connectionIndex_);
+		return conn->GetReqMessage();
 	}
 
 private:

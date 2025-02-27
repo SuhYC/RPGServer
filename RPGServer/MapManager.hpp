@@ -71,23 +71,23 @@ public:
 		return;
 	}
 
-	std::function<PacketData*()> AllocatePacket;
-	std::function<void(PacketData*)> DeallocatePacket;
-	std::function<bool(PacketData*)> SendMsgFunc;
+	std::function<void(std::map<int, User*>&, RESULTCODE, std::string&, int)> SendInfoToUsersFunc;
+	std::function<void(const int, RESULTCODE, std::string&)> SendInfoFunc;
 
 private:
 	RPG::Map* CreateMap(int mapcode_)
 	{
 		RPG::Map* pMap = new RPG::Map(mapcode_);
-		pMap->AllocatePacket = AllocatePacket;
-		pMap->DeallocatePacket = DeallocatePacket;
-		pMap->SendMsgFunc = SendMsgFunc;
+		pMap->SendInfoToUsersFunc = this->SendInfoToUsersFunc;
+		pMap->SendInfoFunc = this->SendInfoFunc;
 
 		auto reserveJobFunc = [this](const long long elaspedTimeSec, const std::function<void()>& job) {pushJob(elaspedTimeSec, job); };
 
 		pMap->ReserveJob = reserveJobFunc;
 
 		m_mapList.emplace(mapcode_, pMap);
+
+		std::cout << "MapManager::CreateMap : Created Map : code" << mapcode_ << "\n";
 
 		return pMap;
 	}

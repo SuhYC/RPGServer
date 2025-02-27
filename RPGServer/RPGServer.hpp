@@ -90,6 +90,7 @@ public:
 private:
 	void OnConnect(const unsigned short index_, const uint32_t ip_) override
 	{
+		std::cout << "RPGServer::OnConnect : [" << index_ << "] Connected.\n";
 		m_ReqHandler.SetIP(index_, ip_);
 		return;
 	}
@@ -99,58 +100,41 @@ private:
 		// 링버퍼로 구조를 바꾼다고 하면 받은 데이터를 패킷 크기에 맞게 재단하여 ReqHandler에 요청해야한다.
 		// 패킷의 크기보다 받은 데이터가 적다면 보관할 장소도 필요하다. (아마도 Connection에 저장하는게 좋겠지?)
 		
+		std::cout << "RPGServer::OnReceive : RecvMsg : " << pData_ << "\n";
 
-		std::string str;
-		str.assign(pData_, ioSize_);
+		StoreMsg(index_, pData_, ioSize_);
 
-		char remain[1000] = { 0 };
-		int len = GetRemainConnRecvBuffer(index_, remain, 1000);
-
-		if (len != 0)
+		while (true)
 		{
-			std::string tmpstr;
-			tmpstr.assign(remain, len);
+			std::string req = GetMsg(index_);
 
-			str = tmpstr + str;
+			if (req == std::string())
+			{
+				break;
+			}
+
+			if (!m_ReqHandler.HandleReq(index_, req))
+			{
+				std::cerr << "RPGServer::OnReceive : Failed to HandleReq\n";
+				return;
+			}
+			else
+			{
+				//std::cout << "RPGServer::OnReceive : " << req << '\n';
+			}
 		}
-
-		std::string req;
-
-		if (!CheckStringSize(str, req))
-		{
-			//std::cout << "PartialMsg : " << str << '\n';
-			strcpy_s(remain, str.c_str());
-			StoreRemainMsg(index_, remain, str.length());
-			return;
-		}
-
-		if (!str.empty())
-		{
-			strcpy_s(remain, str.c_str());
-			StoreRemainMsg(index_, remain, str.length());
-		}
-
-		if(!m_ReqHandler.HandleReq(index_, req))
-		{
-			std::cerr << "RPGServer::OnReceive : Failed to HandleReq\n";
-			return;
-		}
-		else
-		{
-			std::cout << "RPGServer::OnReceive : " << req << '\n';
-		}
-
 
 		return;
 	}
 
 	void OnDisconnect(const unsigned short index_) override
 	{
+		std::cout << "RPGServer::OnDisconnect : [" << index_ << "] disconnected.\n";
 		m_ReqHandler.HandleLogOut(index_);
 
 		return;
 	}
-
+	/*
 	bool CheckStringSize(std::string& str_, std::string& out_)
 	{
 		if (str_[0] != '[')
@@ -189,7 +173,7 @@ private:
 		}
 
 		return false;
-	}
+	}*/
 
 	const int m_BindPort;
 	const unsigned short m_MaxClient;

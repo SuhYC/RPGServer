@@ -4,6 +4,7 @@
 #include <MSWSock.h> // AcceptEx()
 #include <WS2tcpip.h>
 #include <iostream>
+#include <exception>
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "mswsock.lib") // acceptEx()
@@ -27,3 +28,19 @@ struct stOverlappedEx
 	eIOOperation m_eOperation;
 };
 
+class ToJsonException : public std::exception
+{
+private:
+	std::string message;
+
+public:
+	ToJsonException(const std::string& msg) : message(msg)
+	{
+
+	}
+
+	const char* what() const noexcept override
+	{
+		return message.c_str();
+	}
+};

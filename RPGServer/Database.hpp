@@ -23,6 +23,7 @@
 #include "UMapWrapper.hpp"
 #include "MonsterInfo.hpp"
 #include "MonsterDropInfo.hpp"
+#include <time.h>
 
 const bool DB_DEBUG = true;
 const int CLIENT_NOT_CERTIFIED = 0;
@@ -48,10 +49,10 @@ public:
 		m_CharListPool = std::make_unique<MemoryPool<CharList>>(CHARLIST_MEMORY_POOL_COUNT);
 		MakeReservedWordList();
 
-		//MakePriceTable();
-		//MakeSalesList();
-		//MakeMapEdgeList();
-		//MakeMapNPCInfo();
+		MakePriceTable();
+		MakeSalesList();
+		MakeMapEdgeList();
+		MakeMapNPCInfo();
 	}
 
 	virtual ~Database()
@@ -143,8 +144,8 @@ public:
 
 		if (DB_DEBUG)
 		{
-			std::cout << "Database::SignIn : id : " << id_ << ", pw : " << pw_ << '\n';
-			std::wcout << "Database::SignIn : query : " << query << '\n';
+			//std::cout << "Database::SignIn : id : " << id_ << ", pw : " << pw_ << '\n';
+			//std::wcout << "Database::SignIn : query : " << query << '\n';
 		}
 
 		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
@@ -233,8 +234,8 @@ public:
 
 		if (DB_DEBUG)
 		{
-			std::cout << "Database::GetCharInfoJsonStr : No. : " << charNo_ << '\n';
-			std::wcout << "Database::GetCharInfoJsonStr : query : " << query << '\n';
+			//std::cout << "Database::GetCharInfoJsonStr : No. : " << charNo_ << '\n';
+			//std::wcout << "Database::GetCharInfoJsonStr : query : " << query << '\n';
 		}
 
 		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
@@ -268,7 +269,9 @@ public:
 		}
 
 		SQLLEN len;
-		SQLGetData(hstmt, 1, SQL_C_CHAR, pCharInfo->CharName, sizeof(pCharInfo->CharName) / sizeof(pCharInfo->CharName[0]), &len);
+		SQLWCHAR name[20] = { 0 };
+
+		SQLGetData(hstmt, 1, SQL_C_WCHAR, name, sizeof(name) / sizeof(name[0]), &len);
 		SQLGetData(hstmt, 2, SQL_C_LONG, &(pCharInfo->ClassCode), 0, &len);
 		SQLGetData(hstmt, 3, SQL_C_LONG, &(pCharInfo->Level), 0, &len);
 		SQLGetData(hstmt, 4, SQL_C_LONG, &(pCharInfo->Experience), 0, &len);
@@ -283,6 +286,12 @@ public:
 		SQLGetData(hstmt, 13, SQL_C_LONG, &(pCharInfo->Mentality), 0, &len);
 		SQLGetData(hstmt, 14, SQL_C_LONG, &(pCharInfo->Gold), 0, &len);
 		SQLGetData(hstmt, 15, SQL_C_LONG, &(pCharInfo->LastMapCode), 0, &len);
+
+		std::wstring wstr(name);
+		
+		std::string euckrStr = convertUtf16ToEucKr(wstr);
+		
+		strcpy_s(pCharInfo->CharName, euckrStr.c_str());
 
 		ReleaseHandle(hstmt);
 
@@ -335,8 +344,8 @@ public:
 
 		if (DB_DEBUG)
 		{
-			std::cout << "Database::GetCharInfo : No. : " << charNo_ << '\n';
-			std::wcout << "Database::GetCharInfo : query : " << query << '\n';
+			//std::cout << "Database::GetCharInfo : No. : " << charNo_ << '\n';
+			//std::wcout << "Database::GetCharInfo : query : " << query << '\n';
 		}
 
 		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
@@ -360,7 +369,11 @@ public:
 		}
 
 		SQLLEN len;
-		SQLGetData(hstmt, 1, SQL_C_CHAR, ret->CharName, sizeof(ret->CharName) / sizeof(ret->CharName[0]), &len);
+		
+		SQLWCHAR name[20] = { 0 };
+
+		SQLGetData(hstmt, 1, SQL_C_WCHAR, name, sizeof(name) / sizeof(name[0]), &len);
+
 		SQLGetData(hstmt, 2, SQL_C_LONG, &(ret->ClassCode), 0, &len);
 		SQLGetData(hstmt, 3, SQL_C_LONG, &(ret->Level), 0, &len);
 		SQLGetData(hstmt, 4, SQL_C_LONG, &(ret->Experience), 0, &len);
@@ -375,6 +388,12 @@ public:
 		SQLGetData(hstmt, 13, SQL_C_LONG, &(ret->Mentality), 0, &len);
 		SQLGetData(hstmt, 14, SQL_C_LONG, &(ret->Gold), 0, &len);
 		SQLGetData(hstmt, 15, SQL_C_LONG, &(ret->LastMapCode), 0, &len);
+
+		std::wstring wstr(name);
+
+		std::string euckrStr = convertUtf16ToEucKr(wstr);
+
+		strcpy_s(ret->CharName, euckrStr.c_str());
 
 		ReleaseHandle(hstmt);
 
@@ -395,6 +414,7 @@ public:
 		return ret;
 	}
 
+	// ToJsonException이 발생할 수 있음.
 	// CharList Class 만들어야함 + 메모리풀도 -> 패킷데이터랑 템플릿으로 묶을까?
 	// CharNo 여러개를 담아 온다.
 	// CharList는 Redis에 담지 않는다. (유저 요청이 접속당 1번수준. 추후 적절한 유저가 캐릭터선택을 요청하는지는 확인하게 만들어야할까?)
@@ -414,8 +434,8 @@ public:
 
 		if (DB_DEBUG)
 		{
-			std::cout << "Database::GetCharList : usercode : " << userCode_ << '\n';
-			std::wcout << "Database::GetCharList : query : " << query << '\n';
+			//std::cout << "Database::GetCharList : usercode : " << userCode_ << '\n';
+			//std::wcout << "Database::GetCharList : query : " << query << '\n';
 		}
 
 		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
@@ -474,10 +494,18 @@ public:
 
 		ReleaseHandle(hstmt);
 
-		std::string ret = m_JsonMaker.ToJsonString(*pCharList);
+		std::string ret;
+		try
+		{
+			ret = m_JsonMaker.ToJsonString(*pCharList);
+		}
+		catch(ToJsonException e)
+		{
+			ReleaseObject(pCharList);
+			throw;
+		}
 
 		ReleaseObject(pCharList);
-
 		return ret;
 	}
 
@@ -591,40 +619,46 @@ public:
 			return false;
 		}
 
-		HANDLE hstmt = m_Pool->Allocate();
+		std::string strInfo;
 
-		SQLRETURN retCode = SQLPrepare(hstmt, (SQLWCHAR*)
-			L"UPDATE CHARINFO SET"
-			L"LV = ?, EXPERIENCE = ?, STATPOINT = ?, HEALTHPOINT = ?, MANAPOINT = ?, "
-			L"STRENGTH = ?, DEXTERITY = ?, INTELLIGENCE = ?, MENTALITY = ?, GOLD = ?, "
-			L"LASTMAPCODE = ? "
-			L"WHERE CHARNO = ?;", SQL_NTS);
-
-		if (retCode != SQL_SUCCESS)
+		if (pInfo_->HealthPoint == 0)
 		{
-			ReleaseHandle(hstmt);
-			return false;
+			pInfo_->HealthPoint = 100;
 		}
 
-		SQLBindParameter(hstmt, 1, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Level, 0, nullptr);
-		SQLBindParameter(hstmt, 2, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Experience, 0, nullptr);
-		SQLBindParameter(hstmt, 3, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->StatPoint, 0, nullptr);
-		SQLBindParameter(hstmt, 4, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->HealthPoint, 0, nullptr);
-		SQLBindParameter(hstmt, 5, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->ManaPoint, 0, nullptr);
-		SQLBindParameter(hstmt, 6, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Strength, 0, nullptr);
-		SQLBindParameter(hstmt, 7, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Dexterity, 0, nullptr);
-		SQLBindParameter(hstmt, 8, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Intelligence, 0, nullptr);
-		SQLBindParameter(hstmt, 9, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Mentality, 0, nullptr);
-		SQLBindParameter(hstmt, 10, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->Gold, 0, nullptr);
-		SQLBindParameter(hstmt, 11, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->LastMapCode, 0, nullptr);
-		SQLBindParameter(hstmt, 12, SQL_PARAM_INPUT, SQL_C_LONG, SQL_INTEGER, 0, 0, &pInfo_->CharNo, 0, nullptr);
+		m_JsonMaker.ToJsonString(*pInfo_, strInfo);
 
-		retCode = SQLExecute(hstmt);
+		m_RedisManager.UpdateCharInfo(pInfo_->CharNo, strInfo);
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		SQLWCHAR query[1024] = { 0 };
+		swprintf((wchar_t*)query, 1024,
+			L"UPDATE CHARINFO SET "
+			L"CLASS_CODE = %d, "
+			L"LV = %d, EXPERIENCE = %d, STAT_POINT = %d, HEALTH_POINT = %d, MANA_POINT = %d, "
+			L"CURRENT_HEALTH = %d, CURRENT_MANA = %d, "
+			L"STRENGTH = %d, DEXTERITY = %d, INTELLIGENCE = %d, MENTALITY = %d, GOLD = %d, "
+			L"LASTMAPCODE = %d "
+			L"WHERE CHARNO = %d;",
+			pInfo_->ClassCode, pInfo_->Level, pInfo_->Experience, pInfo_->StatPoint, 
+			pInfo_->HealthPoint, pInfo_->ManaPoint, pInfo_->CurrentHealth, pInfo_->CurrentMana,
+			pInfo_->Strength, pInfo_->Dexterity, pInfo_->Intelligence, pInfo_->Mentality,
+			pInfo_->Gold, pInfo_->LastMapCode,
+			pInfo_->CharNo);
+
+		if (DB_DEBUG)
+		{
+			std::wcout << "Database::UpdateCharInfo : query : " << query << '\n';
+		}
+
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
-			std::cerr << "Database::GetCharInfo : Failed to Execute\n";
+			PrintError(hstmt);
+			std::cerr << "Database::UpdateCharInfo : Failed to Execute\n";
 			ReleaseHandle(hstmt);
 			return false;
 		}
@@ -729,19 +763,19 @@ public:
 			return false;
 		}
 
-		std::wstring wnick = std::wstring(nickname_.begin(), nickname_.end());
+		//std::wstring wnick = std::wstring(nickname_.begin(), nickname_.end());
 
 		SQLWCHAR query[128] = { 0 };
 		swprintf((wchar_t*)query, 128,
 			L"SELECT 1 AS RES "
 			L"FROM CHARINFO "
 			L"WHERE CHARNAME = N'%s' "
-			, wnick.c_str());
+			, nickname_.c_str());
 
 		if (DB_DEBUG)
 		{
-			std::cout << "Database::ReserveNickname : nick : " << nickname_ << '\n';
-			std::wcout << "Database::ReserveNickname : query : " << query << '\n';
+			//std::cout << "Database::ReserveNickname : nick : " << nickname_ << '\n';
+			//std::wcout << "Database::ReserveNickname : query : " << query << '\n';
 		}
 
 		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
@@ -776,20 +810,173 @@ public:
 		return m_RedisManager.CancelReserveNickname(nickname_);
 	}
 
-	bool CreateCharactor(const int usercode_, std::string& nickname_, const int startMapcode_)
+	// 생성에 성공했다면 charno를 리턴.
+	// 생성에 실패했다면 -1을 리턴.
+	int CreateCharactor(const int usercode_, std::string& nickname_, const int startMapcode_)
 	{
 		if (!InsertCharInfo(nickname_, startMapcode_))
 		{
-			return false;
+			std::cerr << "DB::CreateCharactor : Failed to Insert CharInfo\n";
+			return -1;
 		}
 		int iRet = GetCharNo(nickname_);
 
 		if (iRet <= 0)
 		{
-			return false;
+			std::cerr << "DB::CreateCharactor : Failed to Get CharNo\n";
+			return -1;
 		}
 
 		if (!InsertCharList(usercode_, iRet))
+		{
+			std::cerr << "DB::CreateCharactor : Failed to Create CharList\n";
+			return -1;
+		}
+
+		if (!CreateInventory(iRet))
+		{
+			std::cerr << "DB::CreateCharactor : Failed to Create Inven\n";
+			return -1;
+		}
+
+		return iRet;
+	}
+
+	bool GetInventory(const int charcode_, std::string& out_)
+	{
+		std::string str;
+
+		// CacheServer 먼저 확인
+		if (m_RedisManager.GetInven(charcode_, str))
+		{
+			out_ = str;
+			return true;
+		}
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		SQLWCHAR query[64] = { 0 };
+		swprintf((wchar_t*)query, 64,
+			L"SELECT INVEN "
+			L"FROM CHARINVEN "
+			L"WHERE CHARNO = %d; "
+			, charcode_);
+
+		if (DB_DEBUG)
+		{
+			std::wcout << "Database::GetInventory : query : " << query << '\n';
+		}
+
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::wcerr << L"Database::GetInventory : Failed to Execute\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		retCode = SQLFetch(hstmt);
+		if (retCode != SQL_SUCCESS)
+		{
+			std::cerr << "DB::GetInventory : Failed to Fetch\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		SQLCHAR cInven[8000] = { 0 };
+		SQLLEN len;
+
+		retCode = SQLGetData(hstmt, 1, SQL_C_CHAR, cInven, sizeof(cInven), &len);
+
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			std::cerr << "DB::GetInventory : Failed to Fetch\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		ReleaseHandle(hstmt);
+
+		out_ = std::string(reinterpret_cast<char*>(cInven));
+
+		if (DB_DEBUG)
+		{
+			std::cout << "DB::GetInventory : out : " << out_ << "\n";
+		}
+
+		// 레디스에 등록하기
+		if (!m_RedisManager.CreateInven(charcode_, out_))
+		{
+			std::wcerr << L"Database::GetInventory : 레디스에 정보 등록 실패\n";
+			return false;
+		}
+
+		return true;
+	}
+
+	bool UpdateInventorySlot(const int charcode_, int idx_, Item& item_)
+	{
+		if (idx_ < 0 || idx_ >= MAX_SLOT)
+		{
+			return false;
+		}
+	}
+
+	std::string GetSalesList(const int npcCode_)
+	{
+		std::string ret;
+
+		// 레디스 먼저 확인.
+		if (m_RedisManager.GetSalesList(npcCode_, ret))
+		{
+			return ret;
+		}
+
+		auto pair = m_SalesList.Get(npcCode_);
+
+		// 해당하는 값 없음
+		if (pair.first == pair.second)
+		{
+			std::cerr << "DB::GetSalesList : No SalesList on" << npcCode_ << "\n";
+			return std::string();
+		}
+
+		std::map<int, int> item_price_map;
+
+		for (auto itr = pair.first; itr != pair.second; itr++)
+		{
+			int itemcode = itr->second;
+			int price = m_PriceTable.Get(itemcode);
+			item_price_map.emplace(itemcode, price);
+		}
+
+		if (!m_JsonMaker.ToJsonString(item_price_map, ret))
+		{
+			std::cerr << "DB::GetSalesList : Failed To Make JsonStr\n";
+			return std::string();
+		}
+
+		if (!m_RedisManager.CreateSalesList(npcCode_, ret))
+		{
+			std::cerr << "DB::GetSalesList : Failed To Insert on Redis\n";
+		}
+
+		return ret;
+	}
+
+	bool DebugSetGold(const int charcode_)
+	{
+		REDISRETURN eRet;
+
+
+		while ((eRet = m_RedisManager.SetGold(charcode_)) == REDISRETURN::LOCK_FAILED)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(0));
+		}
+
+		if (eRet != REDISRETURN::SUCCESS)
 		{
 			return false;
 		}
@@ -849,19 +1036,58 @@ private:
 			return false;
 		}
 
-		// 영문 대소문자, 숫자만 허용
-		for (size_t i = 0; i < nickname.length(); i++)
+		if (hasInvalidCh(nickname))
 		{
-			if (nickname[i] > 'z' ||
-				(nickname[i] < 'a' && nickname[i] > 'Z') ||
-				(nickname[i] < 'A' && nickname[i] > '9') ||
-				nickname[i] < '0')
-			{
-				return false;
-			}
+			return false;
 		}
 
 		return true;
+	}
+
+	// '닼' 같은 문자는 unicode조합이 된 문자고 euc-kr에서는 한글로 인식되지 않을 수 있다.
+	bool isHangul(unsigned char byte1, unsigned char byte2) {
+		// EUC-KR의 한글 범위는 첫 바이트가 0xA1 ~ 0xFE, 두 번째 바이트는 0x41 ~ 0x5A
+		unsigned short combined = (byte1 << 8) | byte2;
+
+		// U+AC00 ~ U+D7A3 범위 확인
+		return (combined >= 0xAC00 && combined <= 0xD7A3);
+	}
+
+	bool isAlpha(unsigned char ch)
+	{
+		return std::isalpha(ch);
+	}
+
+	bool isDigit(unsigned char ch)
+	{
+		return std::isdigit(ch);
+	}
+
+	bool hasInvalidCh(const std::string& nickname)
+	{
+		size_t i = 0;
+		while (i < nickname.length()) {
+			unsigned char byte1 = static_cast<unsigned char>(nickname[i]);
+
+			// 2바이트 문자 (EUC-KR에서 한글)
+			if (byte1 >= 0xA1 && byte1 <= 0xFE && i + 1 < nickname.length()) {
+				unsigned char byte2 = static_cast<unsigned char>(nickname[i + 1]);
+
+				// 한글인지 확인
+				if (!isHangul(byte1, byte2)) {
+					return true;  // 한글이 아닌 2바이트 문자
+				}
+				i += 2;  // 한글은 2바이트이므로 2칸 이동
+			}
+			// 1바이트 문자 (영문, 숫자, 특수문자 등)
+			else {
+				if (!(isAlpha(byte1) || isDigit(byte1))) {
+					return true;  // 영문/숫자가 아닌 문자가 있음
+				}
+				i++;  // 1바이트 문자일 경우 1칸 이동
+			}
+		}
+		return false;  // 모든 문자가 허용된 문자일 경우
 	}
 
 	// 레디스의 SetNx를 이용, 해당 유저코드로 로그인한 유저가 없다면 등록한다.
@@ -1068,6 +1294,11 @@ private:
 
 		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
 		{
+			if (DB_DEBUG)
+			{
+				std::cout << "npc : " << npccode << ", item : " << itemcode << "\n";
+			}
+			
 			m_SalesList.Insert(npccode, itemcode);
 
 			retCode = SQLFetch(hstmt);
@@ -1090,15 +1321,16 @@ private:
 			return;
 		}
 
-		SQLPrepare(hstmt, (SQLWCHAR*)
-			L"SELECT FROM_MAP_CODE, TO_MAP_CODE "
-			L"FROM MAP_EDGE", SQL_NTS);
+		SQLWCHAR query[64] = 	L"SELECT FROM_MAP_CODE, TO_MAP_CODE "
+								L"FROM MAP_EDGE ";
 
-		SQLRETURN retCode = SQLExecute(hstmt);
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
 
 		// SQLExecute Failed
 		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
 		{
+			PrintError(hstmt);
+
 			ReleaseHandle(hstmt);
 			std::cerr << "Database::MakeMapEdgeList : Failed to Execute\n";
 			return;
@@ -1109,13 +1341,13 @@ private:
 		int tocode;
 		SQLLEN tocodeLen;
 
-		SQLBindCol(hstmt, 1, SQL_C_LONG, &fromcode, sizeof(fromcode), &fromcodeLen);
-		SQLBindCol(hstmt, 2, SQL_C_LONG, &tocode, sizeof(tocode), &tocodeLen);
-
 		retCode = SQLFetch(hstmt);
 
 		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
 		{
+			SQLGetData(hstmt, 1, SQL_C_LONG, &fromcode, 0, &fromcodeLen);
+			SQLGetData(hstmt, 2, SQL_C_LONG, &tocode, 0, &tocodeLen);
+
 			m_MapEdge.Insert(fromcode, tocode);
 
 			retCode = SQLFetch(hstmt);
@@ -1164,7 +1396,7 @@ private:
 
 		while (retCode == SQL_SUCCESS || retCode == SQL_SUCCESS_WITH_INFO)
 		{
-			m_MapEdge.Insert(mapcode, npccode);
+			m_MapNPCInfo.Insert(mapcode, npccode);
 
 			retCode = SQLFetch(hstmt);
 		}
@@ -1174,6 +1406,7 @@ private:
 		return;
 	}
 
+	// 캐릭터 정보를 DB에 생성한다.
 	bool InsertCharInfo(std::string& charname_, const int startMapcode_)
 	{
 		HANDLE hstmt = m_Pool->Allocate();
@@ -1183,7 +1416,7 @@ private:
 			return false;
 		}
 
-		std::wstring wnick = std::wstring(charname_.begin(), charname_.end());
+		std::wstring wnick = convertEucKrToUtf16(charname_);
 
 		SQLWCHAR query[512] = { 0 };
 		swprintf((wchar_t*)query, 512,
@@ -1195,8 +1428,8 @@ private:
 
 		if (DB_DEBUG)
 		{
-			std::cout << "Database::InsertCharInfo : nick : " << charname_ << '\n';
-			std::wcout << "Database::InsertCharInfo : query : " << query << '\n';
+			//std::cout << "Database::InsertCharInfo : nick : " << charname_ << '\n';
+			//std::wcout << "Database::InsertCharInfo : query : " << query << '\n';
 		}
 
 		SQLRETURN retcode = SQLExecDirect(hstmt, query, SQL_NTS);
@@ -1213,6 +1446,7 @@ private:
 		return true;
 	}
 
+	// 생성한 캐릭터의 CHARNO를 받아온다.
 	int GetCharNo(std::string& charname_)
 	{
 		HANDLE hstmt = m_Pool->Allocate();
@@ -1222,7 +1456,7 @@ private:
 			return -1;
 		}
 
-		std::wstring wnick = std::wstring(charname_.begin(), charname_.end());
+		std::wstring wnick = convertEucKrToUtf16(charname_);
 
 		SQLWCHAR query[512] = { 0 };
 		swprintf((wchar_t*)query, 512,
@@ -1268,6 +1502,7 @@ private:
 		return ret;
 	}
 
+	// USERNO와 CHARNO를 연결하는 정보를 DB에 추가한다.
 	bool InsertCharList(const int usercode_, const int charcode_)
 	{
 		HANDLE hstmt = m_Pool->Allocate();
@@ -1293,6 +1528,54 @@ private:
 		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
 		{
 			std::cerr << "DB::InsertCharList : Failed to Execute\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		ReleaseHandle(hstmt);
+		return true;
+	}
+
+	bool CreateInventory(const int charcode_)
+	{
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		Inventory inven;
+
+		std::string strInven;
+		m_JsonMaker.ToJsonString(inven, strInven);
+		std::wstring wstrInven = std::wstring(strInven.begin(), strInven.end());
+
+		if (DB_DEBUG)
+		{
+			//std::wcout << "DB::CreateInventory : invenstr : " << wstrInven << "\n";
+		}
+
+		SQLWCHAR query[4096] = { 0 };
+		if (swprintf((wchar_t*)query, 4096,
+			L"INSERT INTO CHARINVEN (CHARNO, INVEN) VALUES (%d, '%s') "
+			, charcode_, wstrInven.c_str()) == -1)
+		{
+			std::cerr << "DB::CreateInventory : swprintf Failed.\n";
+			return false;
+		}
+
+		if (DB_DEBUG)
+		{
+			//std::wcout << "Database::CreateInventory : query : " << query << '\n';
+		}
+
+		SQLRETURN retcode = SQLExecDirect(hstmt, query, SQL_NTS);
+
+		if (retcode != SQL_SUCCESS && retcode != SQL_SUCCESS_WITH_INFO)
+		{
+			PrintError(hstmt);
+			std::cerr << "DB::CreateInventory : Failed to Execute\n";
 			ReleaseHandle(hstmt);
 			return false;
 		}
@@ -1388,6 +1671,36 @@ private:
 		else {
 			std::cout << "No error information available.\n";
 		}
+	}
+
+	std::wstring convertEucKrToUtf16(const std::string& eucKrStr) {
+		// EUC-KR(CP949) -> UTF-16 변환을 위한 버퍼 크기 계산
+		int utf16Length = MultiByteToWideChar(CP_ACP, 0, eucKrStr.c_str(), -1, NULL, 0);
+
+		if (utf16Length == 0) {
+			std::wcerr << L"Conversion failed!" << std::endl;
+			return L"";
+		}
+
+		std::wstring utf16Str(utf16Length, L'\0');
+		MultiByteToWideChar(CP_ACP, 0, eucKrStr.c_str(), -1, &utf16Str[0], utf16Length);
+
+		return utf16Str;
+	}
+
+	std::string convertUtf16ToEucKr(const std::wstring& utf16)
+	{
+		int Length = WideCharToMultiByte(CP_ACP, 0, utf16.c_str(), -1, NULL, 0, NULL, NULL);
+
+		if (Length == 0) {
+			std::wcerr << L"Conversion failed!" << std::endl;
+			return std::string();
+		}
+
+		std::string euckr(Length, '\0');
+		WideCharToMultiByte(CP_ACP, 0, utf16.c_str(), -1, &euckr[0], Length, NULL, NULL);
+
+		return euckr;
 	}
 
 	RedisManager m_RedisManager;

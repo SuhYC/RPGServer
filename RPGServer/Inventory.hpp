@@ -3,13 +3,25 @@
 #include <algorithm>
 #include "Item.hpp"
 
-const int MAX_SLOT = 30;
+const int MAX_SLOT = 64;
 const int MAX_COUNT_ON_SLOT = 100;
 
 class Inventory
 {
 public:
+	Inventory()
+	{
+		for (int i = 0; i < MAX_SLOT; i++)
+		{
+			slot[i].Init();
+		}
+	}
+
 	// true : 적용성공, false : 수량문제 혹은 공간부족
+	// 기존 슬롯에 우선으로 삽입할 수 있도록 한다
+	// 실질적 인벤토리 정보는 redis에 있기 때문에 수정하더라도 반영하지 않으면 괜찮다.
+	// 일단 수정하면서 채워보고 되면 true를, 안되면 false를 반환하며
+	// false가 반환된 경우 redis에 반영하면 안된다.
 	bool push_back(const int itemcode_, const time_t extime_, const int count_)
 	{
 		if (count_ > MAX_COUNT_ON_SLOT)
@@ -19,57 +31,48 @@ public:
 
 		int remaincnt = count_;
 
+		// 기존에 해당 아이템이 있는지 확인 후 해당 슬롯에 채울 수 있는만큼 채운다.
 		for (int i = 0; i < MAX_SLOT && remaincnt > 0; i++)
 		{
-			// 비어있는 슬롯 있음 (1순위)
-			if (slot[i].itemcode == 0)
-			{
-				slot[i].Init(itemcode_, extime_, count_);
-				return true;
-			}
-			// 기존 슬롯에 추가 가능한 분량 세기
-			else if (slot[i].itemcode == itemcode_ &&
+			if (slot[i].itemcode == itemcode_ &&
 				slot[i].expirationtime == extime_)
 			{
-				remaincnt -= MAX_COUNT_ON_SLOT - slot[i].count;
+				int available = MAX_COUNT_ON_SLOT - slot[i].count;
+
+				if (available >= remaincnt)
+				{
+					slot[i].count += remaincnt;
+					remaincnt = 0;
+				}
+				else
+				{
+					remaincnt -= available;
+					slot[i].count = MAX_COUNT_ON_SLOT;
+				}
 			}
 		}
 
-		// 기존 슬롯에 합쳐서 삽입불가
-		if (remaincnt > 0)
+		// 끝
+		if (remaincnt < 1)
 		{
-			return false;
+			return true;
 		}
 
-
-		// 기존 슬롯에 합쳐서 삽입 (2순위)
-		// 앞쪽 슬롯부터 100개를 채우기 전까지 추가한다.
-		remaincnt = count_;
-
+		// 비어있는 슬롯에 나머지를 담는다.
 		for (int i = 0; i < MAX_SLOT && remaincnt > 0; i++)
 		{
-			// 합칠 수 없는 아이템
-			if (slot[i].itemcode != itemcode_ ||
-				slot[i].expirationtime != extime_)
+			if (slot[i].itemcode == 0)
 			{
-				continue;
-			}
-
-			if (slot[i].count + remaincnt > MAX_COUNT_ON_SLOT)
-			{
-				remaincnt -= MAX_COUNT_ON_SLOT - slot[i].count;
-				slot[i].Init(itemcode_, extime_, MAX_COUNT_ON_SLOT);
-			}
-			else
-			{
-				slot[i].Init(itemcode_, extime_, slot[i].count + remaincnt);
-				remaincnt = 0;
+				slot[i].Init(itemcode_, extime_, remaincnt);
+				return true;
 			}
 		}
 
-		return true;
+		// 결국 담지 못함
+		return false;
 	}
 
+	// 지정한 아이템은 정렬하지 않도록 바꾸어보자
 	void sort()
 	{
 		std::sort(slot, slot + MAX_SLOT);

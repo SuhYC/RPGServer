@@ -49,6 +49,9 @@ enum class MessageType
 	USE_ITEM,					// 인벤토리의 아이템 사용
 	MOVE_MAP,					// 맵 이동 요청
 	CHAT_EVERYONE,				// 해당 맵의 모든 인원에게 채팅 (다른 종류의 채팅은 더 생각해보자.)
+	GET_INVEN,					// 인벤토리 정보 요청
+	GET_SALESLIST,				// 특정 npc의 판매목록 요청
+	DEBUG_SET_GOLD,				// 디버깅용. 골드 설정
 
 	POS_INFO,					// 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
 	LAST = POS_INFO				// enum class가 수정되면 마지막 원소로 지정할 것
@@ -79,6 +82,10 @@ enum class RESULTCODE
 	SEND_INFO_MONSTER_DESPAWN,		// 해당 맵의 몬스터 사망 정보
 	SEND_INFO_MONSTER_GET_DAMAGE,	// 해당 맵의 몬스터 피격 정보
 	SEND_INFO_MONSTER_CREATED,		// 해당 맵의 몬스터 생성 정보
+	SEND_INFO_CHAT_EVERYONE,		// 해당 맵의 모두에게 채팅
+	SEND_INFO_OBJECT_CREATED,		// 해당 맵의 아이템 생성 정보
+	SEND_INFO_OBJECT_DISCARDED,		// 해당 맵의 아이템 소멸 정보
+	SEND_INFO_OBJECT_OBTAINED		// 해당 맵의 아이템 타인에 의한 습득정보 (자신의 습득은 Req에 의한 SUCCESS로 처리)
 };
 
 struct ReqMessage
@@ -146,6 +153,11 @@ struct SelectCharParameter
 	int charcode;
 };
 
+struct GetInvenParameter
+{
+	int charcode;
+};
+
 struct PerformSkillParameter
 {
 	int mapcode;
@@ -158,6 +170,11 @@ struct GetObjectParameter
 {
 	int mapcode;
 	int objectidx;
+};
+
+struct GetSalesListParameter
+{
+	int npccode;
 };
 
 struct BuyItemParameter
@@ -182,11 +199,6 @@ struct UseItemParameter
 struct MoveMapParameter
 {
 	int tomapcode;
-};
-
-struct ChatEveryoneParameter
-{
-
 };
 
 struct PosInfoParameter
@@ -217,24 +229,47 @@ struct GetDamageResponse
 	int damage;
 };
 
+struct MonsterSpawnResponse
+{
+	int monsteridx;
+	int monstercode;
+	int healthPoint;
+	float posx;
+	float posy;
+};
+
 struct MonsterDespawnResponse
 {
 	int monsteridx;
 };
 
+const unsigned int MAX_DAMAGE_LINE = 16;
+
 struct MonsterGetDamageResponse
 {
 	int monsteridx;
-	int damage[16]; // 16줄까지 표시할까?
+	int damage[MAX_DAMAGE_LINE]; // 16줄까지 표시할까?
 	// 크리티컬 시스템을 추가할까?
 };
 
 struct CreateObjectResponse
 {
-	int objectidx;
+	unsigned int objectidx;
 	int itemcode;
 	int count;
 	Vector2 position;
+};
+
+struct DiscardObjectResponse
+{
+	unsigned int objectidx;
+};
+
+// 타인에 의한 아이템 습득 정보
+struct ObtainObjectResponse
+{
+	unsigned int objectidx;
+	int charcode;
 };
 
 class JsonMaker
@@ -244,6 +279,12 @@ public:
 	{
 		rapidjson::Document doc;
 		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString CharInfo : Failed to SetObject\n";
+			return false;
+		}
 
 		rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
 
@@ -273,59 +314,33 @@ public:
 		// Make JsonString
 		rapidjson::StringBuffer buffer;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-		doc.Accept(writer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString CharInfo : Failed to Accept\n";
+			return false;
+		}
 
 		out_ = buffer.GetString();
 
 		return true;
 	}
 
-	bool ToCharInfo(const std::string& jsonStr_, CharInfo& out_)
-	{
-		rapidjson::Document doc;
-		if (doc.Parse(jsonStr_.c_str()).HasParseError())
-		{
-			std::cerr << "Json::ToCharInfo : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
-			return false;
-		}
-
-		if (doc.HasMember("Type") && doc["Type"].IsString() && strcmp(doc["Type"].GetString(), "CharInfo") == 0)
-		{
-			const char* str = doc["CharName"].GetString();
-
-			if (strlen(str) > 10)
-			{
-				return false;
-			}
-			strcpy_s(out_.CharName, str);
-
-			// int Members
-			out_.CharNo = doc["CharNo"].GetInt();
-			out_.ClassCode = doc["ClassCode"].GetInt();
-			out_.Level = doc["Level"].GetInt();
-			out_.Experience = doc["Experience"].GetInt();
-			out_.StatPoint = doc["StatPoint"].GetInt();
-			out_.HealthPoint = doc["StatPoint"].GetInt();
-			out_.ManaPoint = doc["ManaPoint"].GetInt();
-			out_.CurrentHealth = doc["CurrentHealth"].GetInt();
-			out_.CurrentMana = doc["CurrentMana"].GetInt();
-			out_.Strength = doc["Strength"].GetInt();
-			out_.Dexterity = doc["Dexterity"].GetInt();
-			out_.Intelligence = doc["Intelligence"].GetInt();
-			out_.Mentality = doc["Mentality"].GetInt();
-			out_.Gold = doc["Gold"].GetInt();
-			out_.LastMapCode = doc["LastMapCode"].GetInt();
-		}
-		else
-		{
-			return false;
-		}
-	}
-
+	/// <summary>
+	/// SetObject 혹은 Accept 등에서 ToJsonException가 발생할 수 있음.
+	/// </summary>
+	/// <param name="charlist_"></param>
+	/// <returns></returns>
 	std::string ToJsonString(CharList& charlist_)
 	{
 		rapidjson::Document doc;
 		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString CharList : Failed to SetObject\n";
+			throw ToJsonException("Failed to SetObject");
+		}
 
 		auto& allocator = doc.GetAllocator();
 
@@ -342,9 +357,385 @@ public:
 
 		rapidjson::StringBuffer buffer;
 		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-		doc.Accept(writer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString CharList : Failed to Accept\n";
+			throw ToJsonException("Failed to Accept");
+		}
 
 		return buffer.GetString();
+	}
+
+	// set of Item
+	// slot < MAX_SLOT
+	// Item : int itemcode, long long expirationtime, int count
+	bool ToJsonString(Inventory& inven_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString Inventory : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		rapidjson::Value array(rapidjson::kArrayType);
+
+		for (size_t i = 0; i < MAX_SLOT; i++)
+		{
+			rapidjson::Value itemValue(rapidjson::kObjectType);
+
+			itemValue.AddMember("I", inven_[i].itemcode, allocator); // ItemCode
+			itemValue.AddMember("E", inven_[i].expirationtime, allocator); // ExTime
+			itemValue.AddMember("C", inven_[i].count, allocator); // Count
+			array.PushBack(itemValue, allocator);
+		}
+
+		doc.AddMember("Inven", array, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString Inventory : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToJsonString(const ResMessage& res_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString ResMessage : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("ReqNo", res_.reqNo, allocator);
+		doc.AddMember("ResCode", static_cast<int>(res_.resCode), allocator);
+
+		// optional
+		if (!res_.msg.empty())
+		{
+			// rapidjson::Document::AddMember에서 std::string을 호환하지 않는다.
+			// rapidjson::Value로 변환하여 전달한다.
+
+			rapidjson::Value val;
+			val.SetString(res_.msg.c_str(), allocator);
+			doc.AddMember("Msg", val, allocator);
+		}
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString ResMessage : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToJsonString(const MonsterSpawnResponse& res_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString MonsterSpawnResponse : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("MonsterIdx", res_.monsteridx, allocator);
+		doc.AddMember("MonsterCode", res_.monstercode, allocator);
+		doc.AddMember("HealthPoint", res_.healthPoint, allocator);
+		doc.AddMember("PosX", res_.posx, allocator);
+		doc.AddMember("PosY", res_.posy, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+		
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString MonsterSpawnResponse : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToJsonString(const MonsterDespawnResponse& res_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString MonsterDespawnResponse : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("MonsterIdx", res_.monsteridx, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString MonsterDespawnResponse : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToJsonString(const MonsterGetDamageResponse& res_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString MonsterGetDamageResponse : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("MonsterIdx", res_.monsteridx, allocator);
+
+		rapidjson::Value damages(rapidjson::kArrayType);
+		for (int i = 0; i < MAX_DAMAGE_LINE; i++)
+		{
+			// 빗나감 = -1, 데미지 더이상 없음 = 0
+			if (res_.damage[i] == 0)
+			{
+				break;
+			}
+			damages.PushBack(res_.damage[i], allocator);
+		}
+		doc.AddMember("Damage", damages, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString MonsterGetDamageResponse : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToJsonString(const CreateObjectResponse& res_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString CreateObjectResponse : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("ObjectIdx", res_.objectidx, allocator);
+		doc.AddMember("ItemCode", res_.itemcode, allocator);
+		doc.AddMember("Count", res_.count, allocator);
+		doc.AddMember("PosX", res_.position.x, allocator);
+		doc.AddMember("PosY", res_.position.y, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString CreateObjectResponse : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToJsonString(const DiscardObjectResponse& res_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString DiscardObjectResponse : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("ObjectIdx", res_.objectidx, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString DiscardObjectResponse : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToJsonString(const ObtainObjectResponse& res_, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString ObtainObjectResponse : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		doc.AddMember("ObjectIdx", res_.objectidx, allocator);
+		doc.AddMember("CharCode", res_.charcode, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString ObtainObjectResponse : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
+	}
+
+	bool ToCharInfo(const std::string& jsonStr_, CharInfo& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(jsonStr_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToCharInfo : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("Type") || !doc["Type"].IsString() || strcmp(doc["Type"].GetString(), "CharInfo") != 0)
+		{
+			return false;
+		}
+
+		const char* str = doc["CharName"].GetString();
+
+		if (strlen(str) > 10)
+		{
+			return false;
+		}
+		strcpy_s(out_.CharName, str);
+
+		// int Members
+		out_.CharNo = doc["CharNo"].GetInt();
+		out_.ClassCode = doc["ClassCode"].GetInt();
+		out_.Level = doc["Level"].GetInt();
+		out_.Experience = doc["Experience"].GetInt();
+		out_.StatPoint = doc["StatPoint"].GetInt();
+		out_.HealthPoint = doc["StatPoint"].GetInt();
+		out_.ManaPoint = doc["ManaPoint"].GetInt();
+		out_.CurrentHealth = doc["CurrentHealth"].GetInt();
+		out_.CurrentMana = doc["CurrentMana"].GetInt();
+		out_.Strength = doc["Strength"].GetInt();
+		out_.Dexterity = doc["Dexterity"].GetInt();
+		out_.Intelligence = doc["Intelligence"].GetInt();
+		out_.Mentality = doc["Mentality"].GetInt();
+		out_.Gold = doc["Gold"].GetInt();
+		out_.LastMapCode = doc["LastMapCode"].GetInt();
+
+		return true;
+	}
+
+	bool ToJsonString(std::map<int,int>& item_price_map, std::string& out_)
+	{
+		rapidjson::Document doc;
+		doc.SetObject();
+
+		if (!doc.IsObject())
+		{
+			std::cerr << "Json::ToJsonString SalesList : Failed to SetObject\n";
+			return false;
+		}
+
+		auto& allocator = doc.GetAllocator();
+
+		rapidjson::Value array(rapidjson::kArrayType);
+
+		for (auto itr = item_price_map.begin(); itr != item_price_map.end(); itr++)
+		{
+			rapidjson::Value info(rapidjson::kObjectType);
+			info.AddMember("ItemCode", itr->first, allocator);
+			info.AddMember("Price", itr->second, allocator);
+
+			array.PushBack(info, allocator);
+		}
+
+		doc.AddMember("SalesList", array, allocator);
+
+		// Make JsonString
+		rapidjson::StringBuffer buffer;
+		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+
+		if (!doc.Accept(writer))
+		{
+			std::cerr << "Json::ToJsonString SalesList : Failed to Accept\n";
+			return false;
+		}
+
+		out_ = buffer.GetString();
+
+		return true;
 	}
 
 	// out_ 매개변수로 들어온 객체는 초기화된다. 주의.
@@ -385,73 +776,6 @@ public:
 		return true;
 	}
 
-	// set of Item
-	// slot < MAX_SLOT
-	// Item : int itemcode, long long expirationtime, int count
-	bool ToJsonString(Inventory& inven_, std::string& out_)
-	{
-		rapidjson::Document doc;
-		doc.SetObject();
-
-		auto& allocator = doc.GetAllocator();
-
-		rapidjson::Value array(rapidjson::kArrayType);
-
-		for (size_t i = 0; i < MAX_SLOT; i++)
-		{
-			rapidjson::Value itemValue(rapidjson::kObjectType);
-
-			const Item& item = inven_[i];
-
-			itemValue.AddMember("ItemCode", inven_[i].itemcode, allocator);
-			itemValue.AddMember("ExTime", inven_[i].expirationtime, allocator);
-			itemValue.AddMember("Count", inven_[i].count, allocator);
-			array.PushBack(itemValue, allocator);
-		}
-		
-		doc.AddMember("Inven", array, allocator);
-
-		// Make JsonString
-		rapidjson::StringBuffer buffer;
-		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-		doc.Accept(writer);
-
-		out_ = buffer.GetString();
-
-		return true;
-	}
-
-	bool ToJsonString(const ResMessage& res_, std::string& out_)
-	{
-		rapidjson::Document doc;
-		doc.SetObject();
-
-		auto& allocator = doc.GetAllocator();
-
-		doc.AddMember("ReqNo", res_.reqNo, allocator);
-		doc.AddMember("ResCode", static_cast<int>(res_.resCode), allocator);
-
-		// optional
-		if (!res_.msg.empty())
-		{
-			// rapidjson::Document::AddMember에서 std::string을 호환하지 않는다.
-			// rapidjson::Value로 변환하여 전달한다.
-			
-			rapidjson::Value val;
-			val.SetString(res_.msg.c_str(), allocator);
-			doc.AddMember("Msg", val, allocator);
-		}
-
-		// Make JsonString
-		rapidjson::StringBuffer buffer;
-		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-		doc.Accept(writer);
-
-		out_ = buffer.GetString();
-
-		return true;
-	}
-
 	// out_ 매개변수로 들어온 객체는 초기화된다. 주의.
 	bool ToInventory(const std::string& str_, Inventory& out_)
 	{
@@ -479,15 +803,15 @@ public:
 				continue;
 			}
 
-			if (!Inven[i].HasMember("ItemCode") || !Inven[i]["ItemCode"].IsInt() ||
-				!Inven[i].HasMember("ExTime") || !Inven[i]["ExTime"].IsInt64() ||
-				!Inven[i].HasMember("Count") || !Inven[i]["Count"].IsInt())
+			if (!Inven[i].HasMember("I") || !Inven[i]["I"].IsInt() || // ItemCode
+				!Inven[i].HasMember("E") || !Inven[i]["E"].IsInt64() || // Extime
+				!Inven[i].HasMember("C") || !Inven[i]["C"].IsInt()) // Count
 			{
 				std::cerr << "Json::ToInventory : Incorrect Format.\n";
 				return false;
 			}
 
-			out_[i].Init(Inven[i]["ItemCode"].GetInt(), Inven[i]["ExTime"].GetInt64(), Inven[i]["Count"].GetInt());
+			out_[i].Init(Inven[i]["I"].GetInt(), Inven[i]["E"].GetInt64(), Inven[i]["C"].GetInt());
 		}
 
 		return true;
@@ -699,6 +1023,26 @@ public:
 		return true;
 	}
 
+	bool ToGetInvenParameter(const std::string& str_, GetInvenParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToGetInvenParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("Charcode") || !doc["Charcode"].IsInt())
+		{
+			std::cerr << "Json::ToGetInvenParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.charcode = doc["Charcode"].GetInt();
+
+		return true;
+	}
+
 	bool ToPerformSkillParameter(const std::string& str_, PerformSkillParameter& out_)
 	{
 		rapidjson::Document doc;
@@ -839,20 +1183,27 @@ public:
 		return true;
 	}
 
-	bool ToChatEveryoneParameter(const std::string& str_, ChatEveryoneParameter& out_)
+	bool ToGetSalesListParameter(const std::string& str_, GetSalesListParameter& out_)
 	{
 		rapidjson::Document doc;
 		if (doc.Parse(str_.c_str()).HasParseError())
 		{
-			std::cerr << "Json::ToChatEveryoneParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			std::cerr << "Json::ToGetSalesListParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
 
 			return false;
 		}
 
+		if (!doc.HasMember("NPCCode") || !doc["NPCCode"].IsInt())
+		{
+			std::cerr << "Json::ToGetSalesListParam : Incorrect Format.\n";
+			return false;
+		}
 
+		out_.npccode = doc["NPCCode"].GetInt();
 
 		return true;
 	}
+
 
 	bool ToPosInfoParameter(const std::string& str_, PosInfoParameter& out_)
 	{
@@ -879,6 +1230,7 @@ public:
 
 		return true;
 	}
+
 
 private:
 

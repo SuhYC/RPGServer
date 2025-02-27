@@ -11,7 +11,7 @@
 * 1. int형 숫자
 *  - 로그인된 계정의 유저번호를 의미한다. value는 ip정도를 넣을 생각
 * 2. int형 숫자 + 인스턴스이름(std::string)
-*  - 특정캐릭터의 정보가 담긴 구조체를 Json화 하여 value로 저장.
+*  - 특정캐릭터(혹은 npc)의 정보가 담긴 구조체를 Json화 하여 value로 저장.
 * 3. "lock" + int형 숫자 + 인스턴스이름(std::string)
 *  - 2번 데이터를 변경하기 위한 레디스분산락. 사용 후 반드시 해제하여야한다.
 *  - 분산락을 걸고 해제하기 전에 서버가 다운되면 큰일이다.
@@ -66,6 +66,14 @@ public:
 		return SetNx(key, info_);
 	}
 
+	// Update Info of Char on Redis
+	// data must be on redis
+	bool UpdateCharInfo(const int charNo_, const std::string& info_)
+	{
+		std::string key = std::to_string(charNo_) + "CharInfo";
+		return SetXx(key, info_);
+	}
+
 	bool GetCharInfo(const int charNo_, std::string& out_)
 	{
 		std::string key = std::to_string(charNo_) + "CharInfo";
@@ -79,10 +87,63 @@ public:
 		return;
 	}
 
+	bool CreateInven(const int charNo_, std::string& strInven_)
+	{
+		std::string key = std::to_string(charNo_) + "Inven";
+
+		return SetNx(key, strInven_);
+	}
+
 	bool GetInven(const int charNo_, std::string& out_)
 	{
 		std::string key = std::to_string(charNo_) + "Inven";
 		return Get(key, out_);
+	}
+
+	REDISRETURN SetGold(const int charNo_)
+	{
+		std::string key = std::to_string(charNo_) + "CharInfo";
+
+		if (!Lock(key))
+		{
+			return REDISRETURN::LOCK_FAILED;
+		}
+
+		std::string strInfo;
+
+		if (!GetCharInfo(charNo_, strInfo))
+		{
+			std::cerr << "RedisManager::SetGold : CharInfo 검색 실패\n";
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		CharInfo info = { 0 };
+		if (!m_jsonMaker.ToCharInfo(strInfo, info))
+		{
+			std::cerr << "RedisManager::SetGold : CharInfo 역직렬화 실패\n";
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		info.Gold = 10000;
+
+		if (!m_jsonMaker.ToJsonString(info, strInfo))
+		{
+			std::cerr << "RedisManager::SetGold : CharInfo 직렬화 실패\n";
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		if (!SetXx(key, strInfo))
+		{
+			std::cerr << "RedisManager::SetGold : SetXx 실패\n";
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		Unlock(key);
+		return REDISRETURN::SUCCESS;
 	}
 
 	// 아이템가격과 플레이어의 소지금만 확인한다.
@@ -95,6 +156,7 @@ public:
 		// 구매 갯수 제한
 		if (count_ > MAX_COUNT_ON_SLOT)
 		{
+			std::cerr << "RedisManager::BuyItem : Too Much Count\n";
 			return REDISRETURN::WRONG_PARAM;
 		}
 
@@ -132,8 +194,12 @@ public:
 		CharInfo info;
 		m_jsonMaker.ToCharInfo(strInfo, info);
 
+		std::cout << "!!!gold : " << info.Gold << "\n";
+
 		if (info.Gold < price_ * count_)
 		{
+			std::cout << "RedisManager::BuyItem : Not Enough Money\n";
+			std::cout << "gold : " << info.Gold << ", need : " << price_ * count_ << "\n";
 			Unlock(infokey);
 			Unlock(invenkey);
 			return REDISRETURN::FAIL;
@@ -145,6 +211,7 @@ public:
 		// 인벤토리에 추가
 		if (!inven.push_back(itemcode_, extime_, count_))
 		{
+			std::cout << "RedisManager::BuyItem : Not Enough Available Space On Inven\n";
 			Unlock(infokey);
 			Unlock(invenkey);
 			return REDISRETURN::FAIL;
@@ -165,6 +232,7 @@ public:
 
 		if (!SetXx(infokey, newStrInfo))
 		{
+			std::cerr << "RedisManager::BuyItem : Info Set Failed\n";
 			Unlock(infokey);
 			Unlock(invenkey);
 			return REDISRETURN::FAIL;
@@ -172,6 +240,7 @@ public:
 		// 이 경우는 수정했던 것을 되돌려야한다.
 		if (!SetXx(invenkey, strInven))
 		{
+			std::cerr << "RedisManager::BuyItem : inven Set Failed\n";
 			SetXx(infokey, strInfo); // 되돌리기
 			Unlock(infokey);
 			Unlock(invenkey);
@@ -276,6 +345,20 @@ public:
 		{
 			return false;
 		}
+	}
+
+	bool CreateSalesList(const int npcCode_, std::string& strSalesList)
+	{
+		std::string key = std::to_string(npcCode_) + "SalesList";
+
+		return SetNx(key, strSalesList);
+	}
+
+	bool GetSalesList(const int npcCode_, std::string& out_)
+	{
+		std::string key = std::to_string(npcCode_) + "SalesList";
+
+		return Get(key, out_);
 	}
 
 private:

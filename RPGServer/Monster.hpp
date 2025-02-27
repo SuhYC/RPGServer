@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Vector.hpp"
+#include "Json.hpp"
 #include <map>
 #include <atomic>
 
@@ -77,6 +78,14 @@ public:
 	unsigned int GetMonsterCode() const { return m_MonsterCode; }
 
 	bool IsAlive() const { return m_bIsAlive; }
+
+	void GetInfo(MonsterSpawnResponse& out_)
+	{
+		out_.healthPoint = this->m_HealthPoint;
+		out_.monstercode = this->m_MonsterCode;
+		out_.posx = m_position.load().x;
+		out_.posy = m_position.load().y;
+	}
 
 private:
 	// 정보를 아예 초기화하는 함수다. 보상처리가 끝날때까지 사용하지 말것.

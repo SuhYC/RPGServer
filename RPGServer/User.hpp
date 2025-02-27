@@ -60,6 +60,7 @@ public:
 	void SetMapCode(const int mapCode_)
 	{
 		m_mapIdx.store(mapCode_);
+		m_pCharInfo->LastMapCode = mapCode_;
 		return;
 	}
 
@@ -98,6 +99,18 @@ public:
 	int GetUserCode() const noexcept { return m_usercode.load(); }
 	int GetMapCode() const noexcept { return m_mapIdx.load(); }
 	bool IsConnected() const noexcept { return m_IsConnected.load(); }
+	
+	std::string GetCharName() noexcept
+	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+
+		if (m_pCharInfo == nullptr)
+		{
+			return std::string();
+		}
+
+		return std::string(m_pCharInfo->CharName);
+	}
 
 	// 바이트형식의 ip를 std::string으로 변환
 	const std::string GetIP() const noexcept

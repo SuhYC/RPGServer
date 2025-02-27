@@ -29,7 +29,7 @@ namespace RPG
 	public:
 		Map(const int mapcode_) : m_mapcode(mapcode_), m_IsNew(true) {};
 
-		void Init(const int monstercode_, const int monstercount_)
+		void Init()
 		{
 			if (m_IsNew == false)
 			{
@@ -50,6 +50,8 @@ namespace RPG
 		void UserEnter(const int connectionIdx_, User* pUser_)
 		{
 			std::lock_guard<std::mutex> guard(m_userMutex);
+			pUser_->SetMapCode(m_mapcode);
+			std::cout << "GameMap[" << m_mapcode << "]::UserEnter : conn[" << connectionIdx_ << "] entered.\n";
 			users.emplace(connectionIdx_, pUser_);
 		}
 
@@ -140,14 +142,16 @@ namespace RPG
 			unsigned int cnt = m_itemcnt++;
 			m_itemObjects.emplace(cnt, obj);
 
+			NotifyObjectCreationToAll(cnt);
+
 			ReserveJob(ITEM_LIFE_SEC, [this, cnt]() {DiscardObject(cnt); });
 
 			return;
 		}
 
-		// usercode : 0 인 경우 아이템 소멸 요청이기 때문에 그냥 준다.
+		// charcode : 0 인 경우 아이템 소멸 요청이기 때문에 그냥 준다.
 		// 유저의 습득 요청의 경우 위치정보도 같이 입력한다.
-		ItemObject* PopObject(const unsigned int objectNo_, const int usercode_ = 0, const Vector2& position_ = Vector2())
+		ItemObject* PopObject(const unsigned int objectNo_, const int charcode_ = 0, const Vector2& position_ = Vector2())
 		{
 			std::lock_guard<std::mutex> guard(m_itemMutex);
 			auto itr = m_itemObjects.find(objectNo_);
@@ -161,12 +165,12 @@ namespace RPG
 				}
 
 				// 거리가 먼 경우
-				if (usercode_ != 0 && position_.SquaredDistance(ret->GetPosition()) > DISTANCE_LIMIT_GET_OBJECT)
+				if (charcode_ != 0 && position_.SquaredDistance(ret->GetPosition()) > DISTANCE_LIMIT_GET_OBJECT)
 				{
 					return nullptr;
 				}
 
-				if (ret->CanGet(usercode_))
+				if (ret->CanGet(charcode_))
 				{
 					m_itemObjects.erase(objectNo_);
 					return ret;
@@ -184,6 +188,7 @@ namespace RPG
 			if (obj != nullptr)
 			{
 				DeallocateItemObject(obj);
+				// discard 전파
 			}
 
 			return;
@@ -192,11 +197,16 @@ namespace RPG
 		// 생성 직후 초기화가 필요한지 확인하는 함수.
 		bool IsNew() { return m_IsNew; }
 
-		//----- func pointer
-		std::function<PacketData* ()> AllocatePacket;
-		std::function<void(PacketData*)> DeallocatePacket;
+		// 누가 보낸 메시지인지 헤더를 붙일 것.
+		void NotifyChatToAll(std::string& msg, int exceptUsercode = 0)
+		{
+			std::cout << "GameMap[" << m_mapcode << "]::NotifyChatToAll : Chat : " << msg << '\n';
+			SendInfoToUsers(users, RESULTCODE::SEND_INFO_CHAT_EVERYONE, msg, exceptUsercode);
+		}
 
-		std::function<bool(PacketData*)> SendMsgFunc;
+		//----- func pointer
+		std::function<void(std::map<int,User*>&, RESULTCODE, std::string&, int)> SendInfoToUsersFunc;
+		std::function<void(const int, RESULTCODE, std::string&)> SendInfoFunc;
 		
 		std::function<ItemObject* ()> AllocateItemObject;
 		std::function<void(ItemObject*)> DeallocateItemObject;
@@ -204,43 +214,6 @@ namespace RPG
 		// 특정 시간이 경과된 후 특정 함수를 실행해달라고 예약. (a,b) : a초 후에 b함수를 실행
 		std::function<void(const long long, const std::function<void()>&)> ReserveJob; 
 
-		// 메시지 주체에 대한 정보를 해당 함수에서 작성할지 고민 필요
-		void SendToAllUser(std::string& data_, const int connectionIdx_, bool bExceptme_)
-		{
-			PacketData* pTmpPacket = AllocatePacket();
-			if (pTmpPacket == nullptr)
-			{
-				std::cerr << "GameMap::SendToAllUser : Failed to Create Packet On Map No" << m_mapcode << '\n';
-				return;
-			}
-			pTmpPacket->Init(0, data_);
-
-			std::lock_guard<std::mutex> guard(m_userMutex);
-
-			for (auto& i : users)
-			{
-				if (bExceptme_ && i.first == connectionIdx_)
-				{
-					continue;
-				}
-
-				PacketData* pPacket = AllocatePacket();
-
-				if (pPacket == nullptr)
-				{
-					DeallocatePacket(pTmpPacket);
-					std::cerr << "GameMap::SendToAllUser : Failed to Create Packet On Map No" << m_mapcode << "\n";
-					return;
-				}
-
-				pPacket->Init(pTmpPacket, i.first);
-				SendMsgFunc(pPacket);
-			}
-
-			DeallocatePacket(pTmpPacket);
-
-			return;
-		}
 	private:
 		User* GetUserInstanceByConnIdx(const int conn_idx_)
 		{
@@ -256,6 +229,115 @@ namespace RPG
 			return itr->second;
 		}
 
+		void NotifySpawnMonsterToAll(const int monsterIdx_)
+		{
+			MonsterSpawnResponse res{monsterIdx_};
+			m_Monsters[monsterIdx_].GetInfo(res);
+
+			std::string str;
+
+			if (!m_jsonMaker.ToJsonString(res, str))
+			{
+				std::cerr << "GameMap::NotifySpawnMonsterToAll : Failed to Convert to json\n";
+				return;
+			}
+			
+			SendInfoToUsers(users, RESULTCODE::SEND_INFO_MONSTER_CREATED, str);
+		}
+
+		void NotifyMonsterGetDamagedToAll(MonsterGetDamageResponse& res_)
+		{
+			std::string str;
+
+			if (!m_jsonMaker.ToJsonString(res_, str))
+			{
+				std::cerr << "GameMap::NotifyMonsterGetDamagedToAll : Failed to Convert to json\n";
+				return;
+			}
+
+			SendInfoToUsers(users, RESULTCODE::SEND_INFO_MONSTER_GET_DAMAGE, str);
+		}
+
+		void NotifyDespawnMonsterToAll(const int monsterIdx_)
+		{
+			MonsterDespawnResponse res{monsterIdx_};
+
+			std::string str;
+
+			if (!m_jsonMaker.ToJsonString(res, str))
+			{
+				std::cerr << "GameMap::NotifyDespawnMonsterToAll : Failed to Convert to json\n";
+				return;
+			}
+
+			SendInfoToUsers(users, RESULTCODE::SEND_INFO_MONSTER_DESPAWN, str);
+		}
+
+		void NotifyObjectCreationToAll(const unsigned int objectIdx_)
+		{
+			auto itr = m_itemObjects.find(objectIdx_);
+
+			if (itr == m_itemObjects.end())
+			{
+				std::cerr << "GameMap::NotifyObjectCreationToAll : idx err\n";
+				return;
+			}
+
+			CreateObjectResponse res{ objectIdx_ };
+
+			if (itr->second == nullptr)
+			{
+				std::cerr << "GameMap::NotifyObjectCreationToAll : null ptr err\n";
+			}
+
+			itr->second->GetInfo(res);
+
+			std::string str;
+
+			if (!m_jsonMaker.ToJsonString(res, str))
+			{
+				std::cerr << "GameMap::NotifyObjectCreationToAll : Failed to Convert to json\n";
+				return;
+			}
+
+			SendInfoToUsers(users, RESULTCODE::SEND_INFO_OBJECT_CREATED, str);
+		}
+
+		void NotifyObjectDiscardToAll(const unsigned int objectIdx_)
+		{
+			DiscardObjectResponse res{ objectIdx_ };
+
+			std::string str;
+
+			if (!m_jsonMaker.ToJsonString(res, str))
+			{
+				std::cerr << "GameMap::NotifyObjectDiscardToAll : Failed to Convert to json\n";
+				return;
+			}
+
+			SendInfoToUsers(users, RESULTCODE::SEND_INFO_OBJECT_DISCARDED, str);
+		}
+
+		// 당사자는 제외하려 했는데 그냥 클라이언트에서 무시할 것
+		void NotifyObjectObtainedToAll(const unsigned int objectIdx_, const int charCode_)
+		{
+			ObtainObjectResponse res{ objectIdx_, charCode_ };
+			std::string str;
+			
+			if (!m_jsonMaker.ToJsonString(res, str))
+			{
+				std::cerr << "GameMap::NotifyObjectObtainedToAll : Failed to Convert to json\n";
+				return;
+			}
+
+			SendInfoToUsers(users, RESULTCODE::SEND_INFO_OBJECT_OBTAINED, str);
+		}
+
+		void SendInfoToUsers(std::map<int, User*>& users, RESULTCODE rescode, std::string& msg, int exceptUsercode = 0)
+		{
+			SendInfoToUsersFunc(users, rescode, msg, exceptUsercode);
+		}
+
 		std::map<int, User*> users; // connidx, userData 
 		std::map<unsigned int, ItemObject*> m_itemObjects;
 
@@ -268,5 +350,8 @@ namespace RPG
 		std::atomic<int> m_mapcode;
 		std::atomic<bool> m_IsNew;
 		std::atomic<std::chrono::steady_clock::time_point> m_NextSpawnTime;
+
+		// 이거 생각보다 인스턴스 크기 커서 싱글턴으로 빼는게 나을수도 있을 것 같다.
+		JsonMaker m_jsonMaker;
 	};
 }
