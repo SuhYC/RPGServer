@@ -108,12 +108,18 @@ public class NetworkManager : MonoBehaviour
     {
         if(_tcpClient != null && _tcpClient.Connected)
         {
-            // 송신크기 헤더
-            msg = "[" + msg.Length.ToString() + "]" + msg;
+            //byte[] tmp = Encoding.UTF8.GetBytes(msg);
+            byte[] tmp = Encoding.GetEncoding("euc-kr").GetBytes(msg);
 
-            byte[] data = Encoding.UTF8.GetBytes(msg);
+            // 송신크기 헤더
+            string[] strings = { "[", tmp.Length.ToString(), "]", msg };
+            msg = string.Join("", strings); //msg = "[" + tmp.Length.ToString() + "]" + msg;
+
+            //byte[] data = Encoding.UTF8.GetBytes(msg);
+            byte[] data = Encoding.GetEncoding("euc-kr").GetBytes(msg);
+
             await _stream.WriteAsync(data, 0, data.Length);
-            //Debug.Log($"NetworkManager::SendMsg : 데이터 전송: {msg}");
+            Debug.Log($"NetworkManager::SendMsg : 데이터 전송: {msg}");
         }
     }
 
@@ -130,9 +136,11 @@ public class NetworkManager : MonoBehaviour
                 int bytesRead = await _stream.ReadAsync(_buffer);
                 if (bytesRead > 0)
                 {
-                    string receivedData = Encoding.UTF8.GetString(_buffer, 0, bytesRead);
-                    //Debug.Log($"NetworkManager::RecvMsg : 수신: {receivedData}");
-                    await ResHandler.Instance.HandlePacket(receivedData);
+                    //string receivedData = Encoding.UTF8.GetString(_buffer, 0, bytesRead);
+                    string receivedData = Encoding.GetEncoding("euc-kr").GetString(_buffer, 0, bytesRead);
+
+                    Debug.Log($"NetworkManager::RecvMsg : 수신: {receivedData}");
+                    await ResHandler.Instance.HandlePacketByte(receivedData);
                 }
                 // 연결종료, 오류 발생
                 else

@@ -304,11 +304,6 @@ public class PacketMaker : MonoBehaviour
                 return;
             }
 
-            if(reqmsg.type == ReqType.SIGNIN)
-            {
-                await HandleSignInResponse(reqmsg, res);
-            }
-
             try
             {
                 if (_resHandleFuncs.ContainsKey(reqmsg.type) && _resHandleFuncs[reqmsg.type] != null)
@@ -725,7 +720,11 @@ public class PacketMaker : MonoBehaviour
                 //Debug.Log($"PacketMaker::HandleSelectCharResponse : SUCCESS!");
                 SelectCharParam param = JsonUtility.FromJson<SelectCharParam>(reqmsg_.msg);
 
-                await UserData.instance.WaitUntilInvenLoaded(param.Charcode);
+                if(await UserData.instance.CheckInvenLoaded(param.Charcode) == false)
+                {
+                    Debug.Log($"PacketMaker::HandleSelectCharResponse : Not Have Invenjstr");
+                    return;
+                }
 
                 string invenjstr = UserData.instance.GetInvenJstr(param.Charcode);
 

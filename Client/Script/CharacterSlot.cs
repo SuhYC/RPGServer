@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
+using static UserData;
 
 
 /// <summary>
@@ -96,29 +97,45 @@ public class CharacterSlot : MonoBehaviour
         {
             int charno = UserData.instance.GetSelectedChar();
 
-            try
+            if (charno == UserData.instance.SetSelectedChar(_slotIdx))
             {
-                // 기존에 선택되었던 슬롯과 지금 선택한 슬롯이 일치 -> 해당 캐릭터로 시작
-                if (charno == UserData.instance.SetSelectedChar(_slotIdx))
-                {
-                    SelectCharParam param = new SelectCharParam();
-                    param.Charcode = charno;
-
-                    string str = JsonUtility.ToJson(param);
-
-                    string msg = PacketMaker.instance.ToReqMessage(PacketMaker.ReqType.SELECT_CHAR, str);
-
-                    await NetworkManager.Instance.SendMsg(msg);
-                }
+                await ReqSelectChar(charno);
             }
-            catch (Exception e)
-            {
-                Debug.Log($"CharacterSlot::OnClick : {e.Message}");
-            }
-            
         }
     }
 
+    public static async void OnStartButtonClicked()
+    {
+        int charno = UserData.instance.GetSelectedChar();
+
+        if(charno == -1)
+        {
+            // 캐릭터가 선택되지 않음
+            return;
+        }
+
+        await ReqSelectChar(charno);
+        return;
+    }
+
+    public static async Task ReqSelectChar(int charno)
+    {
+        try
+        {
+            SelectCharParam param = new SelectCharParam();
+            param.Charcode = charno;
+
+            string str = JsonUtility.ToJson(param);
+
+            string msg = PacketMaker.instance.ToReqMessage(PacketMaker.ReqType.SELECT_CHAR, str);
+
+            await NetworkManager.Instance.SendMsg(msg);
+        }
+        catch (Exception e)
+        {
+            Debug.Log($"CharacterSlot::ReqSelectChar : {e.Message}");
+        }
+    }
 
     /// <summary>
     /// 캐릭터 선택 텍스트 수정

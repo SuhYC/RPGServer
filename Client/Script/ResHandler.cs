@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 using UnityEngine;
 using static PacketMaker;
@@ -72,6 +74,7 @@ public class ResHandler : MonoBehaviour
 
 
     /// <summary>
+    /// [미사용]
     /// 수신한 메시지의 헤더를 제거하는 함수. <br/>
     /// AsyncLock을 사용하여 복수의 Task가 접근하지 않도록 상호배제한다. <br/>
     /// </summary>
@@ -139,5 +142,114 @@ public class ResHandler : MonoBehaviour
                 _remainMsg = str;
             }
         }
+    }
+
+    /// <summary>
+    /// HandlePacket함수에서 string 기준의 패킷길이계산을 byte 기준의 패킷길이 계산으로 변경 <br/>
+    /// c++의 std::string과 C#의 string은 인코딩도 다르고 한글문자당 할당된 길이도 다르다.
+    /// </summary>
+    /// <param name="msg"></param>
+    /// <returns></returns>
+    public async Task HandlePacketByte(string msg)
+    {
+        byte[] targetByte = Encoding.UTF8.GetBytes("]");
+
+        using (await _lockObject.LockAsync())
+        {
+            string str = _remainMsg + msg;
+
+            byte[] bytes = Encoding.GetEncoding("euc-kr").GetBytes(str);
+            //byte[] bytes = Encoding.UTF8.GetBytes(str);
+
+            _remainMsg = string.Empty;
+
+            try
+            {
+                while (true)
+                {
+                    if (bytes.Length == 0)
+                    {
+                        return;
+                    }
+
+                    if (bytes[0] != '[')
+                    {
+                        return;
+                    }
+
+                    int index = FindByteArray(bytes, targetByte);
+
+                    // ]를 찾지 못함
+                    if (index == -1)
+                    {
+                        break;
+                    }
+
+                    if (index < 2)
+                    {
+                        return;
+                    }
+
+                    // bytes배열의 1 ~ index-1 인덱스를 서브어레이로 구성
+                    byte[] headerByte = bytes.Skip(1).Take(index - 1).ToArray();
+
+                    //string header = Encoding.UTF8.GetString(headerByte);
+                    string header = Encoding.GetEncoding("euc-kr").GetString(headerByte);
+
+                    int size = int.Parse(header);
+
+                    if (bytes.Length > size + index)
+                    {
+                        // 여기부터 수정
+
+                        byte[] subBytes = bytes.Skip(index + 1).Take(size).ToArray();
+                        bytes = bytes.Skip(size + index + 1).ToArray();
+
+                        //string req = Encoding.UTF8.GetString(subBytes); // 처리 메시지
+                        //str = Encoding.UTF8.GetString(bytes); // 잔여 메시지
+
+                        string req = Encoding.GetEncoding("euc-kr").GetString(subBytes); // 처리 메시지
+                        str = Encoding.GetEncoding("euc-kr").GetString(bytes); // 잔여 메시지
+
+                        //Debug.Log($"ResHandler::HandlePacket : remain : {str}");
+                        Debug.Log($"ResHandler::HandlerPacket : req : {req}");
+                        await PacketMaker.instance.HandleServerResponse(req);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                _remainMsg = str;
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"ResHandler::HandlePacket : {e.Message}, {e.StackTrace}");
+                _remainMsg = str;
+            }
+        }
+    }
+
+    static int FindByteArray(byte[] byteArray, byte[] targetByte)
+    {
+        for (int i = 0; i <= byteArray.Length - targetByte.Length; i++)
+        {
+            bool match = true;
+            for (int j = 0; j < targetByte.Length; j++)
+            {
+                if (byteArray[i + j] != targetByte[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+            {
+                return i; // 찾은 위치를 반환
+            }
+        }
+        return -1; // 찾지 못한 경우 -1 반환
+
     }
 }

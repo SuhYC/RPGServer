@@ -4,6 +4,7 @@ using TMPro;
 using UnityEngine;
 using System.Threading.Tasks;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// 유저간 대화를 위한 좌하단 채팅패널의 스크립트.
@@ -205,5 +206,10 @@ public class ChatPanel : MonoBehaviour
         await NetworkManager.Instance.SendMsg(req);
 
         inputField.text = string.Empty;
+
+        // 엔터로 전송한 경우 다시 포커스를 설정해준다.
+        EventSystem.current.SetSelectedGameObject(inputField.gameObject);
+        // 입력대기 상태로 설정한다.
+        inputField.OnSelect(null);
     }
 }

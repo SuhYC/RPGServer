@@ -68,6 +68,8 @@ public class UserData : MonoBehaviour
 
     void Awake()
     {
+        _SelectedCharNo = -1;
+
         if (_instance != null && _instance != this)
         {
             Destroy(this.gameObject);
@@ -171,7 +173,12 @@ public class UserData : MonoBehaviour
             return;
         }
 
-        _CharInvenJstr.TryAdd(charcode, jsonstr);
+        Debug.Log($"UserData::AddInvenJstr : Add!");
+
+        if (!_CharInvenJstr.TryAdd(charcode, jsonstr))
+        {
+            Debug.Log($"UserData::AddInvenJstr : Failed to Add charcode : {charcode}");
+        }
 
         return;
     }
@@ -257,6 +264,8 @@ public class UserData : MonoBehaviour
     public bool IsCompletelyLoadedCharInfo()
     {
         //Debug.Log($"UserData::IsCompletelyLoaded : Infos.Count : {_CharInfos.Count}, list.length : {_charlist.array.Length}");
+        Debug.Log($"UserData::IsCompletelyLoaded : info count : {_CharInfos.Count}, list Length : {_charlist.array.Length}");
+
 
         if(_CharInfos.Count == _charlist.array.Length)
         {
@@ -266,28 +275,34 @@ public class UserData : MonoBehaviour
         return false;
     }
 
+    public async Task CheckInvenJstrAndReq(int charCode_)
+    {
+        if (!_CharInvenJstr.ContainsKey(charCode_))
+        {
+            await ReqCharInven(charCode_);
+        }
+
+        return;
+    }
 
     /// <summary>
     /// SelectChar를 수행할 때 해당 캐릭터의 인벤토리정보를 받았는지 확인하는 함수. <br/>
     /// 아직 수신하지 못했다면 재요청한다. <br/>
-    /// 수신할 때까지 반복문을 돌며 비동기대기한다.
+    /// 하나의 처리를 끝내지 않고 다른 요청을 기다리며 대기하지 말것.
     /// </summary>
     /// <param name="charcode_"></param>
     /// <returns></returns>
-    public async Task WaitUntilInvenLoaded(int charcode_)
+    public async Task<bool> CheckInvenLoaded(int charcode_)
     {
         if(!_CharInvenJstr.ContainsKey(charcode_))
         {
-            // 혹시 누락되었을 수도 있으니 재요청한다.
+            Debug.Log($"UserData::WaitUntilInvenLoaded : Not Contains Key");
             await ReqCharInven(charcode_);
+            await CharacterSlot.ReqSelectChar(charcode_);
+            return false;
         }
 
-        while (!_CharInvenJstr.ContainsKey(charcode_))
-        {
-            await Task.Delay(100);
-        }
-
-        return;
+        return true;
     }
 
     /// <summary>

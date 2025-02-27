@@ -109,4 +109,10 @@ public class CheckNicknamePanel : MonoBehaviour
 
         return;
     }
+
+    public void Destroy()
+    {
+        Destroy(gameObject);
+        return;
+    }
 }
