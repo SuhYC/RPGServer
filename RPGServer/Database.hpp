@@ -106,6 +106,7 @@ public:
 		SQLLEN rowCount = 0;
 		SQLRowCount(hstmt, &rowCount);
 
+		ReleaseHandle(hstmt);
 		if (rowCount == 1)
 		{
 			return eReturnCode::SIGNUP_SUCCESS;
@@ -335,6 +336,11 @@ public:
 
 		HANDLE hstmt = m_Pool->Allocate();
 
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			return nullptr;
+		}
+
 		SQLWCHAR query[512] = { 0 };
 		swprintf((wchar_t*)query, 512,
 			L"SELECT CHARNAME, CLASS_CODE, LV, EXPERIENCE, STAT_POINT, HEALTH_POINT, MANA_POINT, CURRENT_HEALTH, CURRENT_MANA, STRENGTH, DEXTERITY, INTELLIGENCE, MENTALITY, GOLD, LASTMAPCODE "
@@ -551,6 +557,40 @@ public:
 		return true;
 	}
 
+	bool AddItem(const int charCode_, const int itemCode_, const time_t exTime_, const int count_)
+	{
+		REDISRETURN eRet;
+
+		// 락 획득 실패 시 재도전
+		while ((eRet = m_RedisManager.AddItem(charCode_, itemCode_, exTime_, count_)) == REDISRETURN::LOCK_FAILED)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(0));
+		}
+
+		if (eRet != REDISRETURN::SUCCESS)
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	bool SwapInventory(const int charCode_, const int idx1, const int idx2)
+	{
+		REDISRETURN eRet;
+		while ((eRet = m_RedisManager.SwapInven(charCode_, idx1, idx2)) == REDISRETURN::LOCK_FAILED)
+		{
+			std::this_thread::sleep_for(std::chrono::microseconds(0));
+		}
+
+		if (eRet != REDISRETURN::SUCCESS)
+		{
+			return false;
+		}
+
+		return true;
+	}
+
 	// return -1 : 해당하는 아이템 정보 없음.
 	int GetPrice(const int itemcode_) noexcept
 	{
@@ -628,9 +668,17 @@ public:
 
 		m_JsonMaker.ToJsonString(*pInfo_, strInfo);
 
+		std::cout << "DB::UpdateCharInfo : strinfo : " << strInfo << '\n';
+
 		m_RedisManager.UpdateCharInfo(pInfo_->CharNo, strInfo);
 
 		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::UpdateCharInfo : Cant get Handle.\n";
+			return false;
+		}
 
 		SQLWCHAR query[1024] = { 0 };
 		swprintf((wchar_t*)query, 1024,
@@ -665,6 +713,77 @@ public:
 
 		ReleaseHandle(hstmt);
 
+		return true;
+	}
+
+	bool MoveMap(const int charCode_, const int mapCode_)
+	{
+		REDISRETURN eRet = m_RedisManager.MoveMap(charCode_, mapCode_);
+
+		while (eRet == REDISRETURN::LOCK_FAILED)
+		{
+			eRet = m_RedisManager.MoveMap(charCode_, mapCode_);
+		}
+
+		if (eRet == REDISRETURN::SUCCESS)
+		{
+			return true;
+		}
+
+		return false;
+	}
+
+	bool UpdateInventory(const int charCode_)
+	{
+		std::string strInven;
+		if (!m_RedisManager.GetInven(charCode_, strInven))
+		{
+			// redis에 인벤토리 정보가 없음.
+			return false;
+		}
+		
+		// 일단 strInven은 인코딩상 깨지지 않기는 하다. 나중에 깨지면 확인할 것
+		std::wstring wstrInven(strInven.begin(), strInven.end()); 
+
+
+		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			std::cerr << "DB::UpdateInven : Failed to Allocate Handle\n";
+			return false;
+		}
+
+		// Inventory JSONSTR 길이는
+		// 슬롯을 감싸는 객체 길이 : {"Inven":[]} << 12자
+		// 슬롯 64개 * 슬롯하나당 60문자정도
+		// ({"I":,"E":,"C":}, << 이건 공통, int형, time_t형, int형 데이터 각 최대 11자, 20자, 11자
+		// 12 + 60 * 64 -> 약 3840자
+		// 여유롭게 4096문자가 들어갈 수 있게 하자.
+		SQLWCHAR query[4096] = { 0 };
+		swprintf((wchar_t*)query, 4096,
+			L"UPDATE CHARINVEN "
+			L"SET INVEN = N'%s' "
+			L"WHERE CHARNO = %d "
+			, wstrInven.c_str(), charCode_);
+
+		if (DB_DEBUG)
+		{
+			std::wcout << "Database::UpdateInventory : query : " << query << '\n';
+		}
+
+		SQLRETURN retCode = SQLExecDirect(hstmt, query, SQL_NTS);
+
+		// SQLExecute Failed
+		if (retCode != SQL_SUCCESS && retCode != SQL_SUCCESS_WITH_INFO)
+		{
+			PrintError(hstmt);
+			std::cerr << "Database::UpdateInventory : Failed to Execute\n";
+			ReleaseHandle(hstmt);
+			return false;
+		}
+
+		ReleaseHandle(hstmt);
 		return true;
 	}
 
@@ -854,6 +973,11 @@ public:
 		}
 
 		HANDLE hstmt = m_Pool->Allocate();
+
+		if (hstmt == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
 
 		SQLWCHAR query[64] = { 0 };
 		swprintf((wchar_t*)query, 64,
@@ -1556,12 +1680,20 @@ private:
 			//std::wcout << "DB::CreateInventory : invenstr : " << wstrInven << "\n";
 		}
 
+
+		// Inventory JSONSTR 길이는
+		// 슬롯을 감싸는 객체 길이 : {"Inven":[]} << 12자
+		// 슬롯 64개 * 슬롯하나당 60문자정도
+		// ({"I":,"E":,"C":}, << 이건 공통, int형, time_t형, int형 데이터 각 최대 11자, 20자, 11자
+		// 12 + 60 * 64 -> 약 3840자
+		// 여유롭게 4096문자가 들어갈 수 있게 하자.
 		SQLWCHAR query[4096] = { 0 };
 		if (swprintf((wchar_t*)query, 4096,
 			L"INSERT INTO CHARINVEN (CHARNO, INVEN) VALUES (%d, '%s') "
 			, charcode_, wstrInven.c_str()) == -1)
 		{
 			std::cerr << "DB::CreateInventory : swprintf Failed.\n";
+			ReleaseHandle(hstmt);
 			return false;
 		}
 
@@ -1661,7 +1793,7 @@ private:
 		SQLSMALLINT msgLength;
 
 		// 진단 메시지 가져오기
-		SQLRETURN ret = SQLGetDiagRec(SQL_HANDLE_STMT, hstmt, 1, sqlState, &nativeError, message, sizeof(message), &msgLength);
+		SQLRETURN ret = SQLGetDiagRec(SQL_HANDLE_STMT, hstmt, 1, sqlState, &nativeError, message, sizeof(message)/sizeof(message[0]), &msgLength);
 
 		if (SQL_SUCCEEDED(ret)) {
 			std::wcout << L"SQLState: " << sqlState << L"\n";

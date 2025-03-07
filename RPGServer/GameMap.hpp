@@ -22,7 +22,7 @@ namespace RPG
 	const int ITEM_LIFE_SEC = 60;
 	const int ITEM_OWNERSHIP_PERIOD_SEC = 20;
 	const int SPAWN_INTERVAL_SEC = 7;
-	const float DISTANCE_LIMIT_GET_OBJECT = 5.0f;
+	const float DISTANCE_LIMIT_GET_OBJECT = 100.0f;
 
 	class Map
 	{
@@ -53,6 +53,39 @@ namespace RPG
 			pUser_->SetMapCode(m_mapcode);
 			std::cout << "GameMap[" << m_mapcode << "]::UserEnter : conn[" << connectionIdx_ << "] entered.\n";
 			users.emplace(connectionIdx_, pUser_);
+
+
+			// 맵 정보 전파
+			std::map<int, User*> user;
+
+			user.emplace(connectionIdx_, pUser_);
+			// 현재 맵의 뿌려져있는 아이템 정보 전파
+
+			{
+				std::lock_guard<std::mutex> guard(m_itemMutex);
+				for (auto pair : m_itemObjects)
+				{
+					CreateObjectResponse res{ pair.first };
+
+					if (pair.second == nullptr)
+					{
+						std::cerr << "GameMap::UserEnter : null ptr err\n";
+						return;
+					}
+
+					pair.second->GetInfo(res);
+
+					std::string str;
+
+					if (!m_jsonMaker.ToJsonString(res, str))
+					{
+						std::cerr << "GameMap::UserEnter : Failed to Convert to json\n";
+						return;
+					}
+
+					SendInfoFunc(connectionIdx_, RESULTCODE::SEND_INFO_OBJECT_CREATED, str);
+				}
+			}
 		}
 
 		// 하나를 소환하는 것보다 맵 전체의 몬스터를 조회하며 소환하도록 하는게 나을것 같다.
@@ -131,21 +164,44 @@ namespace RPG
 			return std::pair<int, int>(target.GetMonsterCode(), 0);
 		}
 
-		void CreateObject(const int itemcode_, const int count_, const int owner_, Vector2& position_) // , const int x, const int y - position
+		void CreateObject(const int itemcode_, time_t exTime_, const int count_, const int owner_, Vector2& position_) // , const int x, const int y - position
 		{
 			std::lock_guard<std::mutex> guard(m_itemMutex);
 			ItemObject* obj = AllocateItemObject();
 
 			time_t now = time(NULL);
 
-			obj->Init(itemcode_, count_, owner_, position_, now + ITEM_OWNERSHIP_PERIOD_SEC);
 			unsigned int cnt = m_itemcnt++;
+
+			obj->Init(cnt, itemcode_, exTime_, count_, owner_, position_, now + ITEM_OWNERSHIP_PERIOD_SEC);
 			m_itemObjects.emplace(cnt, obj);
+
 
 			NotifyObjectCreationToAll(cnt);
 
 			ReserveJob(ITEM_LIFE_SEC, [this, cnt]() {DiscardObject(cnt); });
 
+			return;
+		}
+
+		// 인벤토리 공간 부족 등의 이유로 습득에 실패해서 다시 맵에 갖다놓기
+		// 소멸시간 가까운 것은 해당 함수 내에서 객체를 반납한다.
+		void ReturnObject(ItemObject* obj_)
+		{
+			if (obj_ == nullptr)
+			{
+				return;
+			}
+
+			// 맵에 다시 놓기에는 이미 소멸할 시간이 가까움
+			if (!obj_->HaveToReturn())
+			{
+				DeallocateItemObject(obj_);
+				return;
+			}
+
+			std::lock_guard<std::mutex> guard(m_itemMutex);
+			m_itemObjects.emplace(obj_->GetIdx(), obj_);
 			return;
 		}
 
@@ -173,14 +229,30 @@ namespace RPG
 				if (ret->CanGet(charcode_))
 				{
 					m_itemObjects.erase(objectNo_);
+
+					// 시간경과에 대한 아이템 소멸
+					if (charcode_ == 0)
+					{
+						NotifyObjectDiscardToAll(objectNo_);
+					}
+					// 특정 캐릭터에 의한 아이템 습득
+					else
+					{
+						NotifyObjectObtainedToAll(objectNo_, charcode_);
+					}
 					return ret;
 				}
 			}
 			return nullptr;
 		}
 
-		// 생성된 아이템을 만료시간이 지난 후에 폐기하는 함수
-		// 유저가 습득한 경우엔 당연히 nullptr로 처리되어 넘어간다.
+		/// <summary>
+		/// 생성된 아이템을 만료시간이 지난 후에 폐기하는 함수
+		/// 유저가 습득한 경우엔 당연히 nullptr로 처리되어 넘어간다.
+		/// 
+		/// PopObject 내에서 락을 건다.
+		/// </summary>
+		/// <param name="objectNo_"></param>
 		void DiscardObject(const unsigned int objectNo_)
 		{
 			ItemObject* obj = PopObject(objectNo_);
@@ -188,7 +260,6 @@ namespace RPG
 			if (obj != nullptr)
 			{
 				DeallocateItemObject(obj);
-				// discard 전파
 			}
 
 			return;
@@ -273,6 +344,10 @@ namespace RPG
 			SendInfoToUsers(users, RESULTCODE::SEND_INFO_MONSTER_DESPAWN, str);
 		}
 
+		/// <summary>
+		/// 락을 걸지 않는다.
+		/// </summary>
+		/// <param name="objectIdx_"></param>
 		void NotifyObjectCreationToAll(const unsigned int objectIdx_)
 		{
 			auto itr = m_itemObjects.find(objectIdx_);
@@ -303,6 +378,11 @@ namespace RPG
 			SendInfoToUsers(users, RESULTCODE::SEND_INFO_OBJECT_CREATED, str);
 		}
 
+
+		/// <summary>
+		/// 락을 걸지 않는다.
+		/// </summary>
+		/// <param name="objectIdx_"></param>
 		void NotifyObjectDiscardToAll(const unsigned int objectIdx_)
 		{
 			DiscardObjectResponse res{ objectIdx_ };
@@ -318,7 +398,12 @@ namespace RPG
 			SendInfoToUsers(users, RESULTCODE::SEND_INFO_OBJECT_DISCARDED, str);
 		}
 
-		// 당사자는 제외하려 했는데 그냥 클라이언트에서 무시할 것
+		/// <summary>
+		/// 당사자는 제외하려 했는데 그냥 클라이언트에서 무시할 것
+		/// 락을 걸지 않는다.
+		/// </summary>
+		/// <param name="objectIdx_"></param>
+		/// <param name="charCode_"></param>
 		void NotifyObjectObtainedToAll(const unsigned int objectIdx_, const int charCode_)
 		{
 			ObtainObjectResponse res{ objectIdx_, charCode_ };

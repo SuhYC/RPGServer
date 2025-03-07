@@ -39,9 +39,11 @@ public:
 
 	void UpdatePosition(Vector2& position_, Vector2& velocity_)
 	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+
 		m_LastUpdateTime = std::chrono::steady_clock::now();
-		m_stPosition.store(position_);
-		m_stVelocity.store(velocity_);
+		m_stPosition = position_;
+		m_stVelocity = velocity_;
 	}
 
 	void SetCharInfo(CharInfo* pInfo_)
@@ -148,16 +150,18 @@ public:
 
 	// 데드레커닝.
 	// 위치와 속도를 이용해 마지막 업데이트로부터 시간차를 이용해 위치를 계산한다.
-	Vector2 GetPosition() const noexcept
+	Vector2 GetPosition() noexcept
 	{
+		std::lock_guard<std::mutex> guard(m_mutex);
+
 		auto now = std::chrono::steady_clock::now();
 		auto elapsedTime = std::chrono::duration_cast<std::chrono::milliseconds>(now - m_LastUpdateTime.load());
 		int count = elapsedTime.count();
 
-		return m_stPosition.load() + (m_stVelocity.load() * count);
+		return m_stPosition + (m_stVelocity * count);
 	}
 
-	Vector2 GetVelocity() const noexcept { return m_stVelocity.load(); }
+	Vector2 GetVelocity() const noexcept { return m_stVelocity; }
 
 	long long calStatDamage() const
 	{
@@ -183,8 +187,8 @@ private:
 	std::atomic<uint32_t> m_ip;
 	CharInfo* m_pCharInfo;
 
-	std::atomic<Vector2> m_stPosition;
-	std::atomic<Vector2> m_stVelocity; // delta(position) / ms로 할것
+	Vector2 m_stPosition;
+	Vector2 m_stVelocity; // delta(position) / ms로 할것
 	std::atomic<std::chrono::steady_clock::time_point> m_LastUpdateTime;
 
 	std::atomic_bool m_IsConnected;

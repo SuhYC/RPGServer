@@ -81,6 +81,12 @@ private:
 		pMap->SendInfoToUsersFunc = this->SendInfoToUsersFunc;
 		pMap->SendInfoFunc = this->SendInfoFunc;
 
+		auto allocateFunc = [this]() ->ItemObject* {return m_ItemObjectPool->Allocate(); };
+		auto DeallocateFunc = [this](ItemObject* pItem_) {ReleaseItemObject(pItem_); };
+
+		pMap->AllocateItemObject = allocateFunc;
+		pMap->DeallocateItemObject = DeallocateFunc;
+
 		auto reserveJobFunc = [this](const long long elaspedTimeSec, const std::function<void()>& job) {pushJob(elaspedTimeSec, job); };
 
 		pMap->ReserveJob = reserveJobFunc;

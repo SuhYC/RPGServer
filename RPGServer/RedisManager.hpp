@@ -194,12 +194,8 @@ public:
 		CharInfo info;
 		m_jsonMaker.ToCharInfo(strInfo, info);
 
-		std::cout << "!!!gold : " << info.Gold << "\n";
-
 		if (info.Gold < price_ * count_)
 		{
-			std::cout << "RedisManager::BuyItem : Not Enough Money\n";
-			std::cout << "gold : " << info.Gold << ", need : " << price_ * count_ << "\n";
 			Unlock(infokey);
 			Unlock(invenkey);
 			return REDISRETURN::FAIL;
@@ -253,6 +249,61 @@ public:
 		return REDISRETURN::SUCCESS;
 	}
 
+	REDISRETURN AddItem(const int charNo_, const int itemCode_, const time_t exTime_, const int count_)
+	{
+		// 구매 갯수 제한
+		if (count_ > MAX_COUNT_ON_SLOT)
+		{
+			std::cerr << "RedisManager::AddItem : Too Much Count\n";
+			return REDISRETURN::WRONG_PARAM;
+		}
+
+		std::string invenkey = std::to_string(charNo_) + "Inven";
+
+		if (!Lock(invenkey))
+		{
+			return REDISRETURN::LOCK_FAILED;
+		}
+
+		std::string strInven;
+		if (!GetInven(charNo_, strInven))
+		{
+			std::cerr << "RedisManager::AddItem : Inven검색 실패\n";
+			Unlock(invenkey);
+			return REDISRETURN::FAIL;
+		}
+
+		Inventory inven;
+		m_jsonMaker.ToInventory(strInven, inven);
+
+		// 인벤토리에 추가
+		if (!inven.push_back(itemCode_, exTime_, count_))
+		{
+			std::cout << "RedisManager::AddItem : Not Enough Available Space On Inven\n";
+			Unlock(invenkey);
+			return REDISRETURN::FAIL;
+		}
+
+		std::string newStrInfo;
+
+		if (!m_jsonMaker.ToJsonString(inven, strInven))
+		{
+			std::cerr << "RedisManager::AddItem : Json문자열 생성 실패\n";
+			Unlock(invenkey);
+			return REDISRETURN::FAIL;
+		}
+
+		if (!SetXx(invenkey, strInven))
+		{
+			std::cerr << "RedisManager::AddItem : inven Set Failed\n";
+			Unlock(invenkey);
+			return REDISRETURN::FAIL;
+		}
+
+		Unlock(invenkey);
+		return REDISRETURN::SUCCESS;
+	}
+
 	REDISRETURN DropItem(const int charNo_, const int slotIdx_, const int count_, Item& out_)
 	{
 		if (count_ > MAX_COUNT_ON_SLOT || count_ <= 0 || slotIdx_ >= MAX_SLOT || slotIdx_ < 0)
@@ -290,6 +341,53 @@ public:
 			Unlock(key);
 			return REDISRETURN::WRONG_PARAM; // Drop은 실패하는 케이스가 잘못된 매개변수밖에 없다.
 		}
+
+		if (!m_jsonMaker.ToJsonString(stInven, strInven))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		if (!SetXx(key, strInven))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		Unlock(key);
+		return REDISRETURN::SUCCESS;
+	}
+
+	REDISRETURN SwapInven(const int charCode_, const int idx1, const int idx2)
+	{
+		if (idx1 == idx2 || idx1 >= MAX_SLOT || idx2 >= MAX_SLOT || idx1 < 0 || idx2 < 0)
+		{
+			return REDISRETURN::WRONG_PARAM;
+		}
+
+		std::string key = std::to_string(charCode_) + "Inven";
+
+		if (!Lock(key))
+		{
+			return REDISRETURN::LOCK_FAILED;
+		}
+
+		std::string strInven;
+		if (!GetInven(charCode_, strInven))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		Inventory stInven;
+
+		if (!m_jsonMaker.ToInventory(strInven, stInven))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		stInven.Swap(idx1, idx2);
 
 		if (!m_jsonMaker.ToJsonString(stInven, strInven))
 		{
@@ -359,6 +457,44 @@ public:
 		std::string key = std::to_string(npcCode_) + "SalesList";
 
 		return Get(key, out_);
+	}
+
+	REDISRETURN MoveMap(const int charCode_, const int mapCode_)
+	{
+		std::string key = std::to_string(charCode_) + "CharInfo";
+
+		if (!Lock(key))
+		{
+			return REDISRETURN::LOCK_FAILED;
+		}
+
+		std::string strInfo;
+
+		if (!Get(key, strInfo))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		CharInfo stInfo = { 0 };
+		m_jsonMaker.ToCharInfo(strInfo, stInfo);
+
+		stInfo.LastMapCode = mapCode_;
+
+		if (!m_jsonMaker.ToJsonString(stInfo, strInfo))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		if (!SetXx(key, strInfo))
+		{
+			Unlock(key);
+			return REDISRETURN::FAIL;
+		}
+
+		Unlock(key);
+		return REDISRETURN::SUCCESS;
 	}
 
 private:

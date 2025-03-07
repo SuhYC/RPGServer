@@ -209,6 +209,23 @@ public:
 		return true;
 	}
 
+	bool Swap(const int idx1, const int idx2)
+	{
+		int code = slot[idx1].itemcode;
+		int count = slot[idx1].count;
+		time_t extime = slot[idx1].expirationtime;
+
+		slot[idx1].itemcode = slot[idx2].itemcode;
+		slot[idx1].count = slot[idx2].count;
+		slot[idx1].expirationtime = slot[idx2].expirationtime;
+
+		slot[idx2].itemcode = code;
+		slot[idx2].count = count;
+		slot[idx2].expirationtime = extime;
+
+		return true;
+	}
+
 	Item& operator[](const int slotIdx_)
 	{
 		//if (slotIdx_ < 0 || slotIdx_ >= MAX_SLOT)

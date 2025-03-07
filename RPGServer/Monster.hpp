@@ -83,8 +83,11 @@ public:
 	{
 		out_.healthPoint = this->m_HealthPoint;
 		out_.monstercode = this->m_MonsterCode;
-		out_.posx = m_position.load().x;
-		out_.posy = m_position.load().y;
+
+		std::lock_guard<std::mutex> guard(m_mutex);
+
+		out_.posx = m_position.x;
+		out_.posy = m_position.y;
 	}
 
 private:
@@ -102,7 +105,7 @@ private:
 
 	// --°¡º¯·®
 	std::atomic<unsigned int> m_HealthPoint;
-	std::atomic<Vector2> m_position;
+	Vector2 m_position;
 	std::atomic<bool> m_bIsAlive;
 
 	std::map<int, unsigned int> m_CumulativeDamage;

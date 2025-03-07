@@ -52,6 +52,7 @@ enum class MessageType
 	GET_INVEN,					// 인벤토리 정보 요청
 	GET_SALESLIST,				// 특정 npc의 판매목록 요청
 	DEBUG_SET_GOLD,				// 디버깅용. 골드 설정
+	SWAP_INVENTORY,				// 인벤토리 슬롯 2개의 정보를 교환.
 
 	POS_INFO,					// 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
 	LAST = POS_INFO				// enum class가 수정되면 마지막 원소로 지정할 것
@@ -169,7 +170,7 @@ struct PerformSkillParameter
 struct GetObjectParameter
 {
 	int mapcode;
-	int objectidx;
+	unsigned int objectidx;
 };
 
 struct GetSalesListParameter
@@ -189,6 +190,14 @@ struct DropItemParameter
 	int mapcode;
 	int slotidx;
 	int count;
+	float posx;
+	float posy;
+};
+
+struct SwapInvenParameter
+{
+	int idx1;
+	int idx2;
 };
 
 struct UseItemParameter
@@ -256,6 +265,7 @@ struct CreateObjectResponse
 {
 	unsigned int objectidx;
 	int itemcode;
+	time_t extime;
 	int count;
 	Vector2 position;
 };
@@ -575,6 +585,7 @@ public:
 
 		doc.AddMember("ObjectIdx", res_.objectidx, allocator);
 		doc.AddMember("ItemCode", res_.itemcode, allocator);
+		doc.AddMember("ExTime", res_.extime, allocator);
 		doc.AddMember("Count", res_.count, allocator);
 		doc.AddMember("PosX", res_.position.x, allocator);
 		doc.AddMember("PosY", res_.position.y, allocator);
@@ -1128,7 +1139,9 @@ public:
 
 		if (!doc.HasMember("MapCode") || !doc["MapCode"].IsInt() ||
 			!doc.HasMember("SlotIdx") || !doc["SlotIdx"].IsInt() ||
-			!doc.HasMember("Count") || !doc["Count"].IsInt())
+			!doc.HasMember("Count") || !doc["Count"].IsInt() ||
+			!doc.HasMember("PosX") || !doc["PosX"].IsFloat() ||
+			!doc.HasMember("PosY") || !doc["PosY"].IsFloat())
 		{
 			std::cerr << "Json::ToDropItemParam : Incorrect Format.\n";
 			return false;
@@ -1137,6 +1150,30 @@ public:
 		out_.mapcode = doc["MapCode"].GetInt();
 		out_.slotidx = doc["SlotIdx"].GetInt();
 		out_.count = doc["Count"].GetInt();
+		out_.posx = doc["PosX"].GetFloat();
+		out_.posy = doc["PosY"].GetFloat();
+
+		return true;
+	}
+
+	bool ToSwapInvenParameter(const std::string& str_, SwapInvenParameter& out_)
+	{
+		rapidjson::Document doc;
+		if (doc.Parse(str_.c_str()).HasParseError())
+		{
+			std::cerr << "Json::ToDropItemParam : " << rapidjson::GetParseError_En(doc.GetParseError()) << "\n";
+			return false;
+		}
+
+		if (!doc.HasMember("Idx1") || !doc["Idx1"].IsInt() ||
+			!doc.HasMember("Idx2") || !doc["Idx2"].IsInt())
+		{
+			std::cerr << "Json::ToDropItemParam : Incorrect Format.\n";
+			return false;
+		}
+
+		out_.idx1 = doc["Idx1"].GetInt();
+		out_.idx2 = doc["Idx2"].GetInt();
 
 		return true;
 	}

@@ -50,7 +50,7 @@ public:
 		Actions[MessageType::SELECT_CHAR] = &ReqHandler::HandleSelectChar;
 		Actions[MessageType::GET_INVEN] = &ReqHandler::HandleGetInven;
 		Actions[MessageType::GET_SALESLIST] = &ReqHandler::HandleGetSalesList;
-
+		Actions[MessageType::SWAP_INVENTORY] = &ReqHandler::HandleSwapInven;
 
 		// ----- 인게임 -----
 		Actions[MessageType::PERFORM_SKILL] = &ReqHandler::HandlePerformSkill;
@@ -123,6 +123,11 @@ public:
 		// 변동사항을 기록하고 객체를 반환한다.
 		if (pInfo != nullptr)
 		{
+			if (pInfo->CharNo != CLIENT_NOT_CERTIFIED)
+			{
+				m_DB.UpdateInventory(pInfo->CharNo);
+			}
+
 			RenewInfo(*pInfo);
 
 			RPG::Map* pMap = m_MapManager.GetMap(pInfo->LastMapCode);
@@ -132,6 +137,7 @@ public:
 			m_DB.UpdateCharInfo(pInfo);
 			m_DB.ReleaseObject(pInfo);
 		}
+
 
 		return;
 	}
@@ -439,9 +445,13 @@ private:
 			}
 		}
 
+		// REQ에 대해 허가를 한 후에
+		RESULTCODE rescode = SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+
+		// map정보를 넘겨야한다. (map->UserEnter에서 가지고 있는 Info 전파)
 		pMap->UserEnter(userindex_, pUser);
 
-		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+		return rescode;
 	}
 
 	RESULTCODE HandleGetInven(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -551,6 +561,15 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
 		}
 
+		// 인벤토리에 추가
+		if (!m_DB.AddItem(pUser->GetCharCode(), itemobj->GetItemCode(),
+			itemobj->GetExTime(), itemobj->GetCount()))
+		{
+			pMap->ReturnObject(itemobj);
+
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
+		}
+
 		// 객체 반환
 		m_MapManager.ReleaseItemObject(itemobj);
 
@@ -633,13 +652,28 @@ private:
 	RESULTCODE HandleDropItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		DropItemParameter stParam;
-		m_JsonMaker.ToDropItemParameter(param_, stParam);
+		if (!m_JsonMaker.ToDropItemParameter(param_, stParam))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
+		}
 
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
 		if (stParam.mapcode != pUser->GetMapCode())
 		{
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::MODIFIED_MAPCODE);
+		}
+
+		std::string invenJstr;
+		if (!m_DB.GetInventory(pUser->GetCharCode(), invenJstr))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
+		}
+
+		Inventory inven;
+		if (!m_JsonMaker.ToInventory(invenJstr, inven))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::UNDEFINED);
 		}
 
 		int nRet = m_DB.DropItem(pUser->GetCharCode(), stParam.slotidx, stParam.count);
@@ -649,14 +683,40 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::REQ_FAIL);
 		}
 
-		
+		time_t exTime = inven[stParam.slotidx].expirationtime;
 
 		RPG::Map* pMap = m_MapManager.GetMap(stParam.mapcode);
 
-		Vector2 position = pUser->GetPosition();
+		//Vector2 position = pUser->GetPosition();
+
+		Vector2 position(stParam.posx, stParam.posy);
 
 		// 오브젝트가 생성된 것을 전파하는건 Map이다.
-		pMap->CreateObject(nRet, stParam.count, 0, position);
+		pMap->CreateObject(nRet, exTime, stParam.count, 0, position);
+
+		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+	}
+
+	RESULTCODE HandleSwapInven(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	{
+		SwapInvenParameter stParam;
+		if (!m_JsonMaker.ToSwapInvenParameter(param_, stParam))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_PARAM);
+		}
+
+		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
+
+		if (pUser->GetCharCode() == CLIENT_NOT_CERTIFIED)
+		{
+			// 아직 캐릭터 선택도 안했는데?
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::WRONG_ORDER);
+		}
+
+		if (!m_DB.SwapInventory(pUser->GetCharCode(), stParam.idx1, stParam.idx2))
+		{
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
+		}
 
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
@@ -712,6 +772,12 @@ private:
 			return SendResultMsg(userindex_, ReqNo, RESULTCODE::UNDEFINED);
 		}
 
+		if (!m_DB.MoveMap(pUser->GetCharCode(), stParam.tomapcode))
+		{
+			std::cerr << "ReqHandler::HandleMoveMap : Failed to MoveMap on Redis\n";
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::SYSTEM_FAIL);
+		}
+
 		// 해당 맵에 처음 들어오는 경우 초기화를 해주어야한다.
 		if (pMap->IsNew())
 		{
@@ -723,9 +789,13 @@ private:
 			pMap->Init();
 		}
 
+		// REQ에 대해 허가를 한 후에
+		RESULTCODE rescode = SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+
+		// map정보를 넘겨야한다. (map->UserEnter에서 가지고 있는 Info 전파)
 		pMap->UserEnter(userindex_, pUser);
 
-		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
+		return rescode;
 	}
 
 	RESULTCODE HandleSetGold(const int userindex_, const unsigned int ReqNo, const std::string& param_)
@@ -836,6 +906,11 @@ private:
 
 	void SendInfoMsgToUsers(std::map<int, User*>& users, RESULTCODE rescode_, std::string& msg_, int exceptUsercode_ = 0)
 	{
+		if (users.size() == 0)
+		{
+			return;
+		}
+
 		ResMessage stResultMsg{ 0, rescode_, msg_ };
 		std::string jsonmsg;
 		if (!m_JsonMaker.ToJsonString(stResultMsg, jsonmsg))
