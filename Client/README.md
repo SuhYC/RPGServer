@@ -2,45 +2,82 @@
 async/await, tcpClient 활용하여 서버와 통신 <br/>
 서버 <-> 클라이언트 간의 패킷 전달 시 패킷 분할 현상 해결 <br/>
 
-SignUp 결과 수신 및 패킷처리 까지 완료 (이후 팝업 메시지를 띄워 결과 확인.)<br/>
+```SignUp``` 결과 수신 및 패킷처리 까지 완료 (이후 팝업 메시지를 띄워 결과 확인.)<br/>
 
-SignIn 결과 수신 및 정보 요청 후 수신 완료 (SignIn -> GetCharList -> GetCharInfo)<br/>
+```SignIn``` 결과 수신 및 정보 요청 후 수신 완료 (SignIn -> GetCharList -> GetCharInfo)<br/>
 
-GetCharList로 CharCode 리스트를 수신한 뒤, 해당 정보로 다시 GetCharInfo 요청 (캐릭터가 아직 없는 계정은 바로 씬 전환.)<br/>
+```GetCharList```로 CharCode 리스트를 수신한 뒤, 해당 정보로 다시 ```GetCharInfo``` 요청 (캐릭터가 아직 없는 계정은 바로 씬 전환.)<br/>
 
-GetCharInfo로 수신한 정보를 저장한 뒤, 모든 CharList의 CharInfo를 수신 완료했으면 캐릭터 선택창으로 씬 전환. <br/>
+```GetCharInfo```로 수신한 정보를 저장한 뒤, 모든 CharList의 CharInfo를 수신 완료했으면 캐릭터 선택창으로 씬 전환. <br/>
 
-CreateChar 과정 구현. (ReserveCharName -> CreateChar) ReserveCharName을 호출한 뒤 생성가능한 경우 생성여부 재확인 창을 띄운다. 재확인창에서 생성을 선택한 경우 최종적으로 캐릭터가 생성된다. <br/>
+```CreateChar``` 과정 구현. (```ReserveCharName``` -> ```CreateChar```) ```ReserveCharName```을 호출한 뒤 생성가능한 경우 생성여부 재확인 창을 띄운다. 재확인창에서 생성을 선택한 경우 최종적으로 캐릭터가 생성된다. <br/>
 
-ReserveCharName으로 생성가능한 닉네임에 예약을 건 후 생성여부를 재확인한다. 생성창에서 닉네임을 입력하고 버튼을 누르면 호출한다. <br/>
+```ReserveCharName```으로 생성가능한 닉네임에 예약을 건 후 생성여부를 재확인한다. 생성창에서 닉네임을 입력하고 버튼을 누르면 호출한다. <br/>
 
-CancelCharNameReserve로 예약한 닉네임의 예약을 취소할 수 있다. 재확인창에서 생성을 거부하는 경우 호출한다. <br/>
+```CancelCharNameReserve```로 예약한 닉네임의 예약을 취소할 수 있다. 재확인창에서 생성을 거부하는 경우 호출한다. <br/>
 
-GetInventory로 특정 캐릭터의 인벤토리 정보를 가져올 수 있다. <br/>
+```GetInventory```로 특정 캐릭터의 인벤토리 정보를 가져올 수 있다. <br/>
 
-SelectChar로 특정 캐릭터로 접속하도록 요청할 수 있다. <br/>
+```SelectChar```로 특정 캐릭터로 접속하도록 요청할 수 있다. <br/>
 해당 캐릭터의 정보가 모두 수신되었는지 확인하고 해당 캐릭터의 CharInfo에 있는 LastMapCode를 조회하여 해당하는 씬으로 씬전환한다. <br/>
 
 #### 게임씬으로 진입한 이후
 
-MoveMap으로 서버에 맵 이동을 요청하고, 서버에서 MapEdge테이블을 확인해 정상적으로 이동가능한 요청이라면 승인한다. <br/>
+```MoveMap```으로 서버에 맵 이동을 요청하고, 서버에서 MapEdge테이블을 확인해 정상적으로 이동가능한 요청이라면 승인한다. <br/>
 클라이언트에서는 각 씬에 포탈 프리팹을 배치하고 public int로 선언된 toMapCode를 수정하여 이동할 수 있도록 만들어둔다. <br/>
-이후 PlayerCharacter 스크립트에서 UpArrowKey를 확인하고 오브젝트와 겹쳐있는 포탈 오브젝트를 가져와 toMapCode를 조회하고 MoveMap요청을 서버로 송신한다.
+이후 PlayerCharacter 스크립트에서 UpArrowKey를 확인하고 오브젝트와 겹쳐있는 포탈 오브젝트를 가져와 toMapCode를 조회하고 ```MoveMap```요청을 서버로 송신한다.
 
-GetSalesList로 특정 npccode에 맞는 구매목록을 서버에 요청할 수 있다. <br/>
+```GetSalesList```로 특정 npccode에 맞는 구매목록을 서버에 요청할 수 있다. <br/>
 서버에서는 MapNPCInfo테이블을 확인하여 현재 위치한 맵에서 해당 NPC정보를 받아도 되는지 확인하고 승인한다. <br/>
 SalesList테이블을 확인하여 해당 NPC가 판매하는 아이템들을 조회하고, ItemTable테이블을 확인하여 아이템의 가격을 조회하여 JSON문자열로 만들어 클라이언트에 전송한다. <br/>
 클라이언트에서는 각 씬에 npc 프리팹을 배치하고, public int로 선언된 npcCode를 수정하여 구매목록을 가져올 수 있도록 만들어둔다. <br/>
 
-BuyItem으로 특정 npc를 통해 특정 아이템을 구매하도록 서버에 요청할 수 있다. <br/>
+```BuyItem```으로 특정 npc를 통해 특정 아이템을 구매하도록 서버에 요청할 수 있다. <br/>
 서버에서는 MapNPCInfo테이블을 확인하여 현재 위치한 맵에서 해당 NPC를 만날 수 있는지 확인하고, <br/>
 SalesList테이블을 확인하여 해당 NPC가 해당 아이템을 판매하는지 확인하고, <br/>
 해당 유저의 CharInfo와 Inventory를 Redis에서 분산락을 이용해 상호배제한 후 수정을 시도하여 구매할 수 있는지 확인하여 승인한다. <br/>
 클라이언트에서는 npc프리팹을 클릭하여 ShopPanel을 열고, 해당 패널에서 ShopSlot을 클릭하여 구매요청을 할 수 있도록 만들어둔다. <br/>
 
-Chat으로 같은 맵에 존재하는 유저가 말한 채팅을 수신할 수 있도록하고, 같은 맵에 존재하는 유저에게 채팅을 송신할 수 있도록 한다. <br/>
+```SetGold```로 디버깅을 위해 현재 골드를 1만으로 수정할 수 있도록 한다. 당연히 서버와 클라이언트 모두 정보를 수정할 수 있도록 한다.<br/>
 
-SetGold로 디버깅을 위해 현재 골드를 1만으로 수정할 수 있도록 한다. 당연히 서버와 클라이언트 모두 정보를 수정할 수 있도록 한다.
+```SwapInventory```로 인벤토리 내 두 슬롯의 아이템 정보를 교환한다.<br/>
+IBeginDraggHandler, IDropHandler, IEndDragHandler 인터페이스를 상속해 이벤트를 감지하며,<br/>
+OnBeginDrag에서 어떤 슬롯에서 드래그가 시작되었는지 확인하고 빈 슬롯이 아닌 경우 정보를 저장하며<br/>
+OnDrop에서 슬롯에서 드래그가 풀렸다면 해당 슬롯과 드래그가 시작되었던 슬롯의 정보를 이용해 서버에 ```SwapInventory```를 요청한다. <br/>
+만약 드래그가 시작된 슬롯과 끝난 슬롯이 같다면 서버요청 없이 슬롯 드래그 정보를 초기화한다. <br/>
+OnEndDrag에서는 OnDrop에서 처리되지 않은 데이터가 있다면 ```DropItem```을 요청할 수 있도록 한다.<br/>
+(호출순서 : OnBeginDrag -> OnDrag -> OnDrop -> OnEndDrag) <br/>
+```SwapInventory```요청에 대한 응답이 성공일 경우 별도의 Inventory정보는 요청하지 않고 클라이언트에서 가지고 있는 정보로 인벤토리의 정보를 갱신한다. <br/>
+
+```DropItem```로 인벤토리의 아이템을 맵에 버리도록 서버에 요청한다. <br/>
+인벤토리 패널이외의 위치에서 드래그가 종료되어 OnDrop에서 처리하지 않은 데이터가 남아있는 상태로 OnEndDrag가 호출되었다면, DropItemPanel을 띄워서 몇개의 아이템을 버릴지 묻는다. <br/>
+DropItemPanel이 띄워진 순간부터는 인벤토리에서 별도의 조작을 할 수 없고,<br/>
+DropItemPanel을 닫아 취소하거나 서버에 ```DropItem```요청을 보내 응답을 받은 이후부터 다시 인벤토리 조작이 가능하다. <br/>
+(DropItemPanel을 띄운 상태로 인벤토리의 위치를 조작하여 동기화가 깨지는 것을 미리 방지)<br/>
+```DropItem```요청에 대한 응답이 성공일 경우 별도의 Inventory정보는 요청하지 않고 클라이언트에서 가지고 있는 정보로 인벤토리의 정보를 갱신한다. <br/>
+
+```GetObject```로 맵에 존재하는 아이템오브젝트를 습득하도록 서버에 요청한다. <br/>
+맵에 존재하는 아이템은 생성 시 고유의 ObjectIdx를 부여받으며, 해당 Index를 통해 요청을 처리한다. <br/>
+요청한 ObjectIdx에 맞는 서버가 가지고있는 ItemObject*를 맵에서 제거하고 해당 ItemObject의 정보를 이용해 Inventory에 추가한다. <br/>
+요청한 ObjectIdx가 타인이 습득하였거나 시간이 경과하여 사라진 경우나, <br/>
+Inventory에 해당 아이템을 담을 수 없는 경우 클라이언트에게 실패했음을 알린다. <br/>
+```GetObject```요청에 대한 응답이 성공일 경우 별도의 Inventory정보는 요청하지 않고 클라이언트에서 가지고 있는 정보로 인벤토리의 정보를 갱신한다. (네트워크 송수신량을 줄이기 위함) <br/>
+
+#### 유저 요청에 의한 것이 아닌 서버 정보 전파
+위에 상술한 것들은 유저가 특정 동작을 요청하면 서버가 처리하는 방식이다. <br/>
+하지만 항상 유저의 요청이 시발점이 되지는 않는다. <br/>
+타인의 요청으로 인한 변화를 전파해야하기도 하고, 서버 자체에서 필요한 정보를 전파하기도 한다. <br/>
+이러한 경우는 ResMessage에서 ResCode를 SEND_INFO와 같은 접두어를 붙여두었다. <br/>
+
+```Chat```으로 같은 맵에 존재하는 유저가 말한 채팅을 수신할 수 있도록하고, 같은 맵에 존재하는 유저에게 채팅을 송신할 수 있도록 한다. <br/>
+
+```CreationObject```로 해당 맵에 새로 생성된 아이템오브젝트의 정보를 수신할 수 있다. <br/>
+현재 위치한 맵에서 오브젝트가 생성된 경우에도 서버에서 전파하며, <br/>
+이동하려는 맵에 이미 존재하는 오브젝트가 있는 경우에도 서버에서 전파한다. <br/>
+
+```DiscardObject```로 해당 맵에서 소멸하는 아이템 오브젝트의 정보를 수신할 수 있다. <br/>
+현재 위치한 맵에서 일정 시간이 경과하여 아이템이 소멸하는 경우 서버에서 해당 정보를 전파한다. <br/>
+이 정보를 수신하면 클라이언트에서는 해당 오브젝트의 습득권한을 false로 변경한 뒤, 서서히 사라지는 효과를 준다. <br/>
 
 ## 패킷 분할
 [MTU](https://github.com/SuhYC/Lesson/blob/main/Network/MTU.md)관련 내용과 연계되는 것으로 추정 (혹은 TCP 로직 처리 중에 분할되었을수도 있고..) <br/>
@@ -85,7 +122,7 @@ try
 }
 catch (Exception e)
 {
-    Debug.LogError($"NetworkManager::RecvMsg : {e.Message}");
+    Debug.Log($"NetworkManager::RecvMsg : {e.Message}");
 }
 ```
 다 좋은데 반복문 부분에서 생길 수 있는 문제가 하나 있다. <br/>
