@@ -12,6 +12,12 @@ using System.Threading.Tasks;
 /// </summary>
 public class PlayerCharacter : MonoBehaviour
 {
+    private static PlayerCharacter m_instance;
+    public static PlayerCharacter Instance
+    {
+        get { return m_instance; }
+    }
+
     private bool _isGrounded;
     private float PlayerSpeed = 140f;
     private float PlayerJump = 100f;
@@ -21,18 +27,19 @@ public class PlayerCharacter : MonoBehaviour
     Vector2 _slowdownVec;
     Vector2 _addForceVec;
 
-    KeyCode JumpKey = KeyCode.Space; // 나중에 키세팅도 만들기 위함
-    KeyCode AttackKey = KeyCode.A;
+    private KeySetting _keySetting;
+    private Dictionary<KeyCode, System.Action> keyBinding;
 
     Rigidbody2D rb;
     SpriteRenderer sr;
 
-    LayerMask layerMask;
     Vector2 CharSize;
 
     const float MAX_SPEED = 1.0f;
     void Awake()
     {
+        m_instance = this;
+
         _isGrounded = false;
         rb = GetComponent<Rigidbody2D>();
         sr = GetComponent<SpriteRenderer>();
@@ -41,28 +48,40 @@ public class PlayerCharacter : MonoBehaviour
         BoxCollider2D boxCollider2D = GetComponent<BoxCollider2D>();
         CharSize = boxCollider2D.size;
 
-        layerMask = LayerMask.GetMask("Portal");
+        RenewKeySetting(new KeySetting());
     }
 
-    // Update is called once per frame
     void Update()
     {
-        if(Input.GetKeyDown(JumpKey) && _isGrounded)
+        try
         {
-            Jump();
+            foreach (var KeyPair in keyBinding)
+            {
+                if (Input.GetKeyDown(KeyPair.Key))
+                {
+                    KeyPair.Value.Invoke();
+                }
+            }
         }
-
-        if(Input.GetKeyDown(AttackKey))
+        catch (Exception e)
         {
-            Attack();
-        }
-
-        if(Input.GetKeyDown(KeyCode.UpArrow))
-        {
-            UpArrowKey();
+            Debug.Log($"PlayerCharacter::Update : {e.Message}");
         }
 
         CharacterImageFlip();
+    }
+
+    private void RenewKeySetting(KeySetting set)
+    {
+        keyBinding = new Dictionary<KeyCode, System.Action>
+        {
+            {set.JumpKey, Jump },
+            {set.AttackKey, Attack},
+            {KeyCode.UpArrow, UpArrowKey},
+            {set.InvenKey, ToggleInventoryPanel },
+            {set.GetKey, GetObject }
+
+        };
     }
 
     void FixedUpdate()
@@ -161,8 +180,46 @@ public class PlayerCharacter : MonoBehaviour
     }
     private void Jump()
     {
+        if(_isGrounded == false)
+        {
+            return;
+        }
+
         _isGrounded = false;
         rb.AddForce(Vector2.up * PlayerJump * 0.1f, ForceMode2D.Impulse);
+    }
+
+    private void GetObject()
+    {
+        LayerMask layerMask = LayerMask.GetMask("ItemObject");
+
+        Collider2D[] colliders = Physics2D.OverlapBoxAll(transform.position, CharSize, 0f, layerMask);
+
+        foreach (Collider2D collider in colliders)
+        {
+            if (!collider.isTrigger)
+            {
+                continue;
+            }
+
+            ItemObject script = collider.GetComponent<ItemObject>();
+
+            if(script == null)
+            {
+                continue; 
+            }
+
+            try
+            {
+                Task task = script.TryToGet();
+            }
+            catch (Exception e)
+            {
+                Debug.Log($"PlayerCharacter::GetObject : {e.Message}");
+            }
+
+            return;
+        }
     }
 
     private void Attack()
@@ -185,19 +242,21 @@ public class PlayerCharacter : MonoBehaviour
 
     private void UpArrowKey()
     {
+        LayerMask layerMask = LayerMask.GetMask("Portal");
+
         Collider2D[] colliders = Physics2D.OverlapBoxAll(transform.position, CharSize, 0f, layerMask);
 
-        foreach(Collider2D collider in colliders)
+        foreach (Collider2D collider in colliders)
         {
-            if(!collider.isTrigger)
+            if (!collider.isTrigger)
             {
                 continue;
             }
 
-            if(collider.transform.name == "Portal")
+            if (collider.transform.name == "Portal")
             {
                 Portal portal = collider.transform.GetComponent<Portal>();
-                if(portal != null)
+                if (portal != null)
                 {
                     MoveMapParameter req = new MoveMapParameter(portal._toMapCode);
                     string str = JsonUtility.ToJson(req);
@@ -207,7 +266,7 @@ public class PlayerCharacter : MonoBehaviour
                     {
                         Task task = NetworkManager.Instance.SendMsg(msg);
                     }
-                    catch(Exception e)
+                    catch (Exception e)
                     {
                         Debug.Log($"PlayerCharacter::UpArrowKey : {e.Message}");
                         return;
@@ -218,4 +277,21 @@ public class PlayerCharacter : MonoBehaviour
         }
     }
 
+
+    private void ToggleInventoryPanel()
+    {
+        if(InventoryPanel.Instance == null)
+        {
+            InventoryPanel.CreateInstance();
+        }
+
+        bool b = InventoryPanel.Instance.gameObject.activeSelf;
+
+        InventoryPanel.Instance.gameObject.SetActive(!b);
+    }
+
+    public Vector3 GetPosition()
+    {
+        return transform.position;
+    }
 }

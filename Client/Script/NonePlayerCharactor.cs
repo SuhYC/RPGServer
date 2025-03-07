@@ -61,8 +61,7 @@ public class NonePlayerCharactor : MonoBehaviour
 
         if (ShopPanel.Instance == null)
         {
-            Debug.Log($"NPC::CallBackAfterNetworkResponse : ShopPanel null ref");
-            return;
+            ShopPanel.CreateInstance();
         }
 
         ShopPanel.Instance.gameObject.SetActive(true);
@@ -96,8 +95,7 @@ public class NonePlayerCharactor : MonoBehaviour
 
         if (ShopPanel.Instance == null)
         {
-            Debug.Log($"NPC::CallBackAfterNetworkResponse : ShopPanel null ref");
-            return;
+            ShopPanel.CreateInstance();
         }
 
         ShopPanel.Instance.gameObject.SetActive(true);

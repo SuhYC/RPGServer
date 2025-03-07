@@ -7,6 +7,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using UnityEngine.UIElements;
 
 
 
@@ -75,6 +76,7 @@ public class PacketMaker : MonoBehaviour
         GET_INVEN,                  // 인벤토리 정보 요청
         GET_SALESLIST,              // 특정 npc의 판매목록 요청
         DEBUG_SET_GOLD,             // 디버깅용. 골드 설정
+        SWAP_INVENTORY,             // 인벤토리 슬롯 2개의 정보를 교환.
 
         POS_INFO,                   // 캐릭터의 위치, 속도 등에 대한 정보를 업데이트하는 파라미터
         LAST = POS_INFO				// enum class가 수정되면 마지막 원소로 지정할 것
@@ -222,6 +224,15 @@ public class PacketMaker : MonoBehaviour
         ResHandleFunc BuyItem = HandleBuyItemResponse;
         _resHandleFuncs.Add(ReqType.BUY_ITEM, BuyItem);
 
+        ResHandleFunc SwapInven = HandleSwapInventory;
+        _resHandleFuncs.Add(ReqType.SWAP_INVENTORY, SwapInven);
+
+        ResHandleFunc DropItem = HandleDropObjectResponse;
+        _resHandleFuncs.Add(ReqType.DROP_ITEM, DropItem);
+
+        ResHandleFunc GetItem = HandleGetObjectResponse;
+        _resHandleFuncs.Add(ReqType.GET_OBJECT, GetItem);
+
         // ----- SendInfo -----
 
         InfoHandleFunc Pos = HandlePosInfo;
@@ -230,6 +241,14 @@ public class PacketMaker : MonoBehaviour
         InfoHandleFunc Chat = HandleChat;
         _infoHandleFuncs.Add(ResCode.SEND_INFO_CHAT_EVERYONE, Chat);
 
+        InfoHandleFunc CreateObject = HandleCreationObject;
+        _infoHandleFuncs.Add(ResCode.SEND_INFO_OBJECT_CREATED, CreateObject);
+
+        InfoHandleFunc DiscardObject = HandleDiscardObject;
+        _infoHandleFuncs.Add(ResCode.SEND_INFO_OBJECT_DISCARDED, DiscardObject);
+
+        InfoHandleFunc ObtainObject = HandleObtainedObject;
+        _infoHandleFuncs.Add(ResCode.SEND_INFO_OBJECT_OBTAINED, ObtainObject);
 
         // ----- For Debug -----
         ResHandleFunc SetGold = HandleSetGoldResponse;
@@ -773,6 +792,8 @@ public class PacketMaker : MonoBehaviour
 
                     UserData.instance.SetMapCode(param.MapCode);
 
+                    ItemObject.InitDictionary();
+
                     SceneManager.LoadScene(param.MapCode.ToString());
                 }
                 catch(Exception e)
@@ -899,6 +920,94 @@ public class PacketMaker : MonoBehaviour
         }
     }
 
+    private async Task HandleGetObjectResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                ItemObject.GetObjectParam param = JsonUtility.FromJson<ItemObject.GetObjectParam>(reqmsg_.msg);
+
+                ItemObject.GetItem(param.ItemIdx);
+
+                Debug.Log($"PacketMaker::HandleGetObjectRes : SUCCESS!");
+
+                break;
+            case ResCode.REQ_FAIL:
+                Debug.Log($"PacketMaker::HandleGetObjectRes : REQ_FAIL");
+                break;
+            case ResCode.MODIFIED_MAPCODE:
+                Debug.Log($"PacketMaker::HandleGetObjectRes : MODIFIED_MAPCODE");
+                break;
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleGetObjectRes : WRONG_PARAM");
+                break;
+            default:
+                break;
+        }
+    }
+
+    private async Task HandleDropObjectResponse(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask; 
+        switch (resmsg_.ResCode)
+        {
+            case ResCode.SUCCESS:
+                DropItemPanel.DropItemParam stParam = JsonUtility.FromJson<DropItemPanel.DropItemParam>(reqmsg_.msg);
+                InventoryPanel.Remove(stParam.SlotIdx, stParam.Count);
+                
+                // ItemObject.CreateItem()은 InfoMsg로 따로 처리.
+
+                // 다시 동작하도록 설정
+                InventoryPanel.SetInteractable(true);
+
+                break;
+            case ResCode.REQ_FAIL:
+                Debug.Log($"PacketMaker::HandleDropObjectResponse : REQ_FAIL");
+                break;
+            case ResCode.MODIFIED_MAPCODE:
+                Debug.Log($"PacketMaker::HandleDropObjectResponse : MODIFIED_MAPCODE");
+                break;
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleDropObjectResponse : WRONG_PARAM");
+                break;
+            case ResCode.UNDEFINED:
+                Debug.Log($"PacketMaker::HandleDropObjectResponse : UNDEFINED");
+                break;
+            case ResCode.SYSTEM_FAIL:
+                Debug.Log($"PacketMaker::HandleDropObjectResponse : SYSTEM_FAIL");
+                break;
+            default:
+                break;
+        }
+    }
+
+    private async Task HandleSwapInventory(ReqMessage reqmsg_, ResMessage resmsg_)
+    {
+        await Task.CompletedTask;
+
+        switch (resmsg_.ResCode)
+        { 
+            case ResCode.SUCCESS:
+                InventoryPanel.SwapInvenParam stParam = JsonUtility.FromJson<InventoryPanel.SwapInvenParam>(reqmsg_.msg);
+
+                InventoryPanel.HandleSwapInventory(stParam.Idx1, stParam.Idx2);
+                break;
+            case ResCode.SYSTEM_FAIL:
+                Debug.Log($"PacketMaker::HandleSwapInventory : SYSTEM_FAIL");
+                break;
+            case ResCode.WRONG_PARAM:
+                Debug.Log($"PacketMaker::HandleSwapInventory : WRONG_PARAM");
+                break;
+            case ResCode.WRONG_ORDER:
+                Debug.Log($"PacketMaker::HandleSwapInventory : WRONG_ORDER");
+                break;
+            default:
+                break;
+        }
+    }
+
     /// <summary>
     /// 서버에서 전파한 캐릭터들의 위치정보 처리.
     /// </summary>
@@ -917,6 +1026,64 @@ public class PacketMaker : MonoBehaviour
     private void HandleChat(ResMessage resmsg_)
     {
         ChatPanel.Instance.AddString(resmsg_.Msg);
+        return;
+    }
+
+    public class CreateObjectInfo
+    {
+        public uint ObjectIdx;
+        public int ItemCode;
+        public long ExTime;
+        public int Count;
+        public float PosX;
+        public float PosY;
+    }
+
+    private void HandleCreationObject(ResMessage resmsg_)
+    {
+        CreateObjectInfo res = JsonUtility.FromJson<CreateObjectInfo>(resmsg_.Msg);
+
+        Debug.Log($"PacketMaker::HandleCreationObject : {res.PosX}, {res.PosY}");
+
+        ItemObject.CreateItem(res.ObjectIdx, res.ItemCode, res.ExTime, res.Count, new Vector3(res.PosX, res.PosY, 0f));
+
+        return;
+    }
+
+    public class ObtainedObjectInfo
+    {
+        public uint ObjectIdx;
+        public int CharCode;
+    }
+
+    private void HandleObtainedObject(ResMessage resmsg_)
+    {
+        Debug.Log($"PacketMaker::HandleObtainedObject");
+        ObtainedObjectInfo res = JsonUtility.FromJson<ObtainedObjectInfo>(resmsg_.Msg);
+
+        // 자신이 먹었다. (HandleGetObject에서 처리)
+        if(res.CharCode == UserData.instance.GetSelectedChar())
+        {
+            return;
+        }
+
+        ItemObject.SetObtained(res.ObjectIdx, res.CharCode);
+
+        return;
+    }
+
+    public class DiscardObjectInfo
+    {
+        public uint ObjectIdx;
+    }
+
+    private void HandleDiscardObject(ResMessage resmsg_)
+    {
+        Debug.Log($"PacketMaker::HandleDiscardObject");
+        DiscardObjectInfo res = JsonUtility.FromJson<DiscardObjectInfo>(resmsg_.Msg);
+
+        ItemObject.Discard(res.ObjectIdx);
+
         return;
     }
 }

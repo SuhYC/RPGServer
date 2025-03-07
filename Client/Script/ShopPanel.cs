@@ -14,6 +14,9 @@ using UnityEngine;
 /// </summary>
 public class ShopPanel : MonoBehaviour
 {
+    private static GameObject prefab;
+    private static Canvas canvas;
+
     private static ShopPanel instance;
     private static Dictionary<int, string> data; // <npccode, SalesListJstr>
     private int m_NowNPCCode;
@@ -38,6 +41,32 @@ public class ShopPanel : MonoBehaviour
     {
         public List<Item> SalesList;
     }
+
+    public static void CreateInstance()
+    {
+        if (prefab == null)
+        {
+            prefab = Resources.Load<GameObject>("Prefabs/UI/ShopPanel");
+            if (prefab == null)
+            {
+                Debug.Log($"ShopPanel::CreateInstance : prefab null ref");
+                return;
+            }
+        }
+
+        if (canvas == null)
+        {
+            canvas = FindAnyObjectByType<Canvas>();
+            if (canvas == null)
+            {
+                Debug.Log($"ShopPanel::CreateInstance : canvas null ref");
+                return;
+            }
+        }
+
+        GameObject obj = Instantiate(prefab, canvas.transform);
+    }
+
 
     private void Awake()
     {

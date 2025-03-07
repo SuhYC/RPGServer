@@ -363,6 +363,7 @@ public class UserData : MonoBehaviour
 
     /// <summary>
     /// 현재 선택된 캐릭터의 CharCode를 리턴한다.
+    /// if -1 -> Not Selected Yet
     /// </summary>
     /// <returns>선택된 캐릭터의 CharCode</returns>
     public int GetSelectedChar()

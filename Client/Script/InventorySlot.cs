@@ -4,6 +4,8 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 using System;
+using UnityEngine.EventSystems;
+using Unity.VisualScripting;
 
 
 /// <summary>
@@ -11,7 +13,7 @@ using System;
 /// 해당 슬롯에 아이템정보가 저장되며
 /// 정보에 맞게 텍스처를 출력한다.
 /// </summary>
-public class InventorySlot : MonoBehaviour
+public class InventorySlot : MonoBehaviour, IBeginDragHandler, IEndDragHandler, IDropHandler
 {
     public const int MaxSlots = 100; // 한 슬롯에 보유할 수 있는 최대 아이템 갯수
 
@@ -22,6 +24,7 @@ public class InventorySlot : MonoBehaviour
     private Image image; // 아이템의 텍스처
     private TMP_Text text; // 아이템의 갯수 출력 텍스트
     private GameObject ExImage; // 아이템의 만료여부 출력 이미지의 게임오브젝트
+
 
     private void Awake()
     {
@@ -108,7 +111,14 @@ public class InventorySlot : MonoBehaviour
     /// <param name="idx"></param>
     public void swap(int idx)
     {
+        int now = transform.GetSiblingIndex();
+        if(idx == now)
+        {
+            Debug.Log($"InventorySlot::swap : same idx");
+            return;
+        }
 
+        InventoryPanel.SwapInventorySlot(idx, now);
     }
 
     /// <summary>
@@ -153,5 +163,91 @@ public class InventorySlot : MonoBehaviour
         ExImage.SetActive(expire);
 
         return;
+    }
+
+    /// <summary>
+    /// 어떤 슬롯을 드래그했는지 기록.
+    /// </summary>
+    /// <param name="eventData"></param>
+    public void OnBeginDrag(PointerEventData eventData)
+    {
+        int DragIndex = transform.GetSiblingIndex();
+
+        if (!InventoryPanel.IsInteractable())
+        {
+            Debug.Log($"InventorySlot[{DragIndex}]::OnBeginDrag : Not Interactable");
+            return;
+        }
+
+        Debug.Log($"InventorySlot[{DragIndex}]::OnBeginDrag : Start");
+
+        // 빈슬롯이면 넘어간다.
+        if (m_ItemCode == 0)
+        {
+            return;
+        }
+
+        if(DraggingObject.Instance == null)
+        {
+            DraggingObject.CreateInstance();
+        }
+
+        DraggingObject.Instance.SetIdx(DragIndex);
+
+        DraggingObject.Instance.SetSprite(image.sprite);
+
+        Debug.Log($"InventorySlot[{DragIndex}]::OnBeginDrag : Ready!");
+        return;
+    }
+
+    /// <summary>
+    /// OnDrop으로 슬롯정보를 초기화하지 못했다면
+    /// 해당 함수에서 DropItem을 서버에 요청.
+    /// 
+    /// 반드시 InventorySlot의 OnDrop이 아니어도 된다.
+    /// 타UI에서도 OnDrop이 발생하면 일단 DropItem을 의도한 것이 아닐 수 있으니
+    /// 타UI에도 OnDrop을 구현하여 정보를 없애는 작업을 할 것.
+    /// </summary>
+    /// <param name="eventData"></param>
+    public void OnEndDrag(PointerEventData eventData)
+    {
+        Debug.Log($"InventorySlot[{transform.GetSiblingIndex()}]::OnEndDrag : End");
+
+        int idx = DraggingObject.Instance.GetIdx();
+
+        // OnDrop에서 처리했다.
+        if (idx == -1)
+        {
+            return;
+        }
+
+        InventoryPanel.SetInteractable(false);
+
+        DraggingObject.Instance.SetIdx(-1);
+        DraggingObject.Instance.Hide();
+
+        DropItemPanel.CreateDropItemPanel(idx);
+    }
+
+    /// <summary>
+    /// 
+    /// </summary>
+    /// <param name="eventData"></param>
+    public void OnDrop(PointerEventData eventData)
+    {
+        int targetIdx = DraggingObject.Instance.GetIdx();
+        Debug.Log($"InventorySlot[{transform.GetSiblingIndex()}]::OnDrop : From [{targetIdx}] Drop");
+        if ( targetIdx == -1 )
+        {
+            return;
+        }
+
+
+        // 드래그중이던 정보 초기화
+        DraggingObject.Instance.SetIdx(-1);
+        DraggingObject.Instance.Hide();
+
+        // 두 슬롯의 정보 교환
+        swap(targetIdx);
     }
 }

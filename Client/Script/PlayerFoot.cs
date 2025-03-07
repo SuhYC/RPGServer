@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using UnityEditor.UIElements;
 using UnityEngine;
 
 /// <summary>
@@ -16,6 +17,9 @@ public class PlayerFoot : MonoBehaviour
 
     void OnTriggerStay2D(Collider2D other)
     {
-        player.SetGrounded();
+        if (other.gameObject.layer == LayerMask.NameToLayer("Platform"))
+        {
+            player.SetGrounded();
+        }        
     }
 }

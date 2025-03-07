@@ -151,7 +151,7 @@ public class NetworkManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError($"NetworkManager::RecvMsg : {e.Message}");
+            Debug.Log($"NetworkManager::RecvMsg : {e.Message}");
         }
     }
 

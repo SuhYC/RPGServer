@@ -99,7 +99,17 @@ public class BuyItemPanel : MonoBehaviour
         try
         {
             int count = int.Parse(input.text);
+
+            if(count < 1 || count > 100)
+            {
+                throw new System.FormatException("");
+            }
+
             await ReqBuy(count);
+        }
+        catch (System.FormatException)
+        {
+            TextMessage.CreateTextPanel("1 이상, 100 이하의 숫자를 입력해주세요.");
         }
         catch (System.Exception e)
         {
