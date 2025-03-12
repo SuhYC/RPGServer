@@ -9,6 +9,10 @@ MSSQL with odbc <br/>
 rapidJson <br/>
 (to-do) openssl <br/>
 
+## 설명 영상 링크
+[YoutubeLink](https://youtu.be/9p8_nc-A0UU) <br/>
+영상 설명 및 댓글에 타임스탬프 있음.
+
 ## 오브젝트풀 및 커넥션풀
 메모리의 할당 및 해제에는 오버헤드가 발생한다. <br/>
 객체풀을 이용하면 이러한 부분에서 성능향상을 얻을 수 있다. <br/>
