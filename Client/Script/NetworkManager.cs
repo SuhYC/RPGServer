@@ -26,7 +26,13 @@ public class NetworkManager : MonoBehaviour
     private const string serverIp = "127.0.0.1";
     private NetworkStream _stream;
     private TcpClient _tcpClient;
+
+    private bool m_IsRun;
+
     private byte[] _buffer;
+
+    private RingBuffer _SendBuffer;
+    private byte[] _SendingData;
 
     private static NetworkManager _instance;
 
@@ -61,6 +67,8 @@ public class NetworkManager : MonoBehaviour
         }
 
         _buffer = new byte[1024];
+        _SendingData = new byte[1024];
+        _SendBuffer = new RingBuffer();
 
         await ConnectToTcpServer(serverIp, port);
     }
@@ -88,13 +96,24 @@ public class NetworkManager : MonoBehaviour
 
         Debug.Log($"NetworkManager::ConnectToTcpServer : 연결 완료");
 
-        await RecvMsg();
+        m_IsRun = true;
+
+
+        await Task.WhenAll(RecvMsg(), SendIO());
+        //await RecvMsg();
 
         return;
     }
 
     private void OnApplicationQuit()
     {
+        End();
+    }
+
+    public void End()
+    {
+        m_IsRun = false;
+
         _stream?.Close();
         _tcpClient?.Close();
     }
@@ -108,18 +127,36 @@ public class NetworkManager : MonoBehaviour
     {
         if(_tcpClient != null && _tcpClient.Connected)
         {
-            //byte[] tmp = Encoding.UTF8.GetBytes(msg);
             byte[] tmp = Encoding.GetEncoding("euc-kr").GetBytes(msg);
 
-            // 송신크기 헤더
-            string[] strings = { "[", tmp.Length.ToString(), "]", msg };
-            msg = string.Join("", strings); //msg = "[" + tmp.Length.ToString() + "]" + msg;
+            int size = tmp.Length;
 
-            //byte[] data = Encoding.UTF8.GetBytes(msg);
-            byte[] data = Encoding.GetEncoding("euc-kr").GetBytes(msg);
+            byte[] data = new byte[size + sizeof(uint)];
 
-            await _stream.WriteAsync(data, 0, data.Length);
-            Debug.Log($"NetworkManager::SendMsg : 데이터 전송: {msg}");
+            data[0] = (byte)(size & 0xFF);
+            data[1] = (byte)((size >> 8) & 0xFF);
+            data[2] = (byte)((size >> 16) & 0xFF);
+            data[3] = (byte)((size >> 24) & 0xFF);
+
+            Buffer.BlockCopy(tmp, 0, data, sizeof(uint), size);
+
+            await _SendBuffer.EnqueueWithLock(data, size + sizeof(uint));
+        }
+    }
+
+    private async Task SendIO()
+    {
+        while (m_IsRun)
+        {
+            int size = await _SendBuffer.DequeueWithLock(_SendingData);
+
+            if (size == 0)
+            {
+                await Task.Delay(30);
+                continue;
+            }
+
+            await _stream.WriteAsync(_SendingData, 0, size);
         }
     }
 
@@ -136,11 +173,11 @@ public class NetworkManager : MonoBehaviour
                 int bytesRead = await _stream.ReadAsync(_buffer);
                 if (bytesRead > 0)
                 {
-                    //string receivedData = Encoding.UTF8.GetString(_buffer, 0, bytesRead);
-                    string receivedData = Encoding.GetEncoding("euc-kr").GetString(_buffer, 0, bytesRead);
+                    //string receivedData = Encoding.GetEncoding("euc-kr").GetString(_buffer, 0, bytesRead);
 
-                    Debug.Log($"NetworkManager::RecvMsg : 수신: {receivedData}");
-                    await ResHandler.Instance.HandlePacketByte(receivedData);
+                    //Debug.Log($"NetworkManager::RecvMsg : 수신: {receivedData}");
+                    //await ResHandler.Instance.HandlePacketByte(receivedData);
+                    await ResHandler.Instance.HandlePacket(_buffer, bytesRead);
                 }
                 // 연결종료, 오류 발생
                 else
