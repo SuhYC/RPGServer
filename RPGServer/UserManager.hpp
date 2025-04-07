@@ -23,7 +23,7 @@ public:
 	}
 
 	// 리턴값을 null체크 하고 반환할것.
-	CharInfo* ReleaseUser(const int connectionIdx_)
+	CharInfo* ReleaseUser(const unsigned short connectionIdx_)
 	{
 		return users[connectionIdx_]->Clear();
 	}
@@ -42,7 +42,7 @@ public:
 		users.clear();
 	}
 
-	User* GetUserByConnIndex(const int connectionIndex_) { return users[connectionIndex_]; }
+	User* GetUserByConnIndex(const unsigned short connectionIndex_) { return users[connectionIndex_]; }
 
 	std::function<void(CharInfo*)> ReleaseInfo;
 

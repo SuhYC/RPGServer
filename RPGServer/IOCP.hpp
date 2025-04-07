@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Connection.hpp"
-#include "PacketPool.hpp"
+#include <sqlext.h>
 #include <mutex>
 
 class IOCPServer
@@ -9,12 +9,10 @@ class IOCPServer
 public:
 	IOCPServer()
 	{
-		m_PacketPool = std::make_unique<NetworkPacket::PacketPool>();
 	}
 
 	virtual ~IOCPServer()
 	{
-		m_PacketPool.reset();
 		WSACleanup();
 	}
 
@@ -50,26 +48,21 @@ public:
 		return;
 	}
 
-	bool SendMsg(PacketData* pPacket_)
+	bool SendMsg(unsigned short connectionIndex_, PacketData* pPacket_)
 	{
 		if (pPacket_ == nullptr)
 		{
 			return false;
 		}
 
-		Connection* pConnection = GetConnection(pPacket_->GetClient());
+		Connection* pConnection = GetConnection(connectionIndex_);
 
 		if (pConnection == nullptr)
 		{
-			m_PacketPool->Deallocate(pPacket_);
 			return false;
 		}
 
 		pConnection->SendMsg(pPacket_);
-
-		pPacket_->Clear();
-
-		m_PacketPool->Deallocate(pPacket_);
 
 		return true;
 	}
@@ -86,29 +79,16 @@ public:
 		return;
 	}
 
-	PacketData* AllocatePacket()
-	{
-		PacketData* ret = m_PacketPool->Allocate();
-
-		return ret;
-	}
-
-	void DeallocatePacket(PacketData* pPacket)
-	{
-		m_PacketPool->Deallocate(pPacket);
-		return;
-	}
-
 	bool StoreMsg(const int connectionIndex_, char* msg_, int size_)
 	{
 		Connection* conn = GetConnection(connectionIndex_);
 		return conn->StorePartialMessage(msg_, size_);
 	}
 
-	std::string GetMsg(const int connectionIndex_)
+	unsigned int GetMsg(const int connectionIndex_, char* buf)
 	{
 		Connection* conn = GetConnection(connectionIndex_);
-		return conn->GetReqMessage();
+		return conn->GetReqMessage(buf);
 	}
 
 private:
@@ -263,6 +243,8 @@ private:
 				DoSend(pOverlapped, ioSize);
 			}
 		}
+
+		return;
 	}
 
 	void HandleException(Connection* pConnection_, const stOverlappedEx* pOverlapped_)
@@ -358,5 +340,4 @@ private:
 	std::vector<Connection*> Connections;
 	std::vector<std::thread> WorkThreads;
 
-	std::unique_ptr<NetworkPacket::PacketPool> m_PacketPool;
 };

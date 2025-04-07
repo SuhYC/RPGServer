@@ -5,6 +5,7 @@
 #include "MapManager.hpp"
 #include "UserManager.hpp"
 #include "ChanceEvaluator.hpp"
+#include "PacketPool.hpp"
 
 /*
 * Json -> param -> Operation
@@ -37,6 +38,7 @@ public:
 	ReqHandler()
 	{
 		Actions = std::unordered_map<MessageType, REQ_HANDLE_FUNC>();
+		m_PacketPool = std::make_unique<NetworkPacket::PacketPool>();
 
 		// ----- 아웃게임 -----
 		Actions[MessageType::SIGNIN] = &ReqHandler::HandleSignIn;
@@ -72,19 +74,20 @@ public:
 		m_UserManager.ReleaseInfo = releaseInfoFunc;
 		m_UserManager.Init(MaxClient_);
 
-		auto SendInfo = [this](const int userindex_, RESULTCODE rescode_, std::string& msg_) {SendInfoMsg(userindex_, rescode_, msg_); };
-		auto SendInfoToUsers = [this](std::map<int, User*>& users, RESULTCODE rescode_, std::string& msg_, int exceptUsercode_ = 0) {SendInfoMsgToUsers(users, rescode_, msg_, exceptUsercode_); };
+		auto SendInfo = [this](const unsigned short userindex_, RESULTCODE rescode_, std::string& msg_) {SendInfoMsg(userindex_, rescode_, msg_); };
+		auto SendInfoToUsers = [this](std::map<unsigned short, User*>& users, RESULTCODE rescode_, std::string& msg_, int exceptUsercode_ = 0) {SendInfoMsgToUsers(users, rescode_, msg_, exceptUsercode_); };
 		m_MapManager.SendInfoFunc = SendInfo;
 		m_MapManager.SendInfoToUsersFunc = SendInfoToUsers;
 	}
 
 	~ReqHandler()
 	{
+		m_PacketPool.reset();
 		m_UserManager.Clear();
 	}
 
 	// 수행 결과로 의심스러운 동작이 검출된다면 따로 기록하는것도 좋겠다.
-	bool HandleReq(const int userindex_, std::string& Req_)
+	bool HandleReq(const unsigned short userindex_, std::string& Req_)
 	{
 		ReqMessage msg;
 		if (!m_JsonMaker.ToReqMessage(Req_, msg))
@@ -108,7 +111,7 @@ public:
 		return true;
 	}
 
-	void HandleLogOut(const int connidx_)
+	void HandleLogOut(const unsigned short connidx_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(connidx_);
 		int usercode = pUser->GetUserCode();
@@ -144,7 +147,7 @@ public:
 
 	void ClearSession()
 	{
-		for (int idx = 0; idx < m_MaxClient; idx++)
+		for (unsigned short idx = 0; idx < m_MaxClient; idx++)
 		{
 			HandleLogOut(idx);
 		}
@@ -152,7 +155,7 @@ public:
 		return;
 	}
 
-	void SetIP(const int connidx_, const uint32_t ip_)
+	void SetIP(const unsigned short connidx_, const uint32_t ip_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(connidx_);
 		pUser->SetIP(ip_);
@@ -160,12 +163,10 @@ public:
 		return;
 	}
 
-	std::function<PacketData* ()> AllocatePacket;
-	std::function<void(PacketData*)> DeallocatePacket;
-	std::function<bool(PacketData*)> SendMsgFunc;
+	std::function<bool(unsigned short, PacketData*)> SendMsgFunc;
 
 private:
-	RESULTCODE HandleSignIn(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleSignIn(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		SignInParameter stParam;
 
@@ -211,7 +212,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, strCharList);
 	}
 
-	RESULTCODE HandleSignUp(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleSignUp(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		SignUpParameter stParam;
 		if (!m_JsonMaker.ToSignUpParameter(param_, stParam))
@@ -241,7 +242,7 @@ private:
 		}
 	}
 
-	RESULTCODE HandleModifyPW(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleModifyPW(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		// Database 쪽 함수 먼저 만들 것
 
@@ -258,7 +259,7 @@ private:
 	/// <param name="ReqNo"></param>
 	/// <param name="param_"></param>
 	/// <returns></returns>
-	RESULTCODE HandleGetCharList(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleGetCharList(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -289,7 +290,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, strCharList);
 	}
 
-	RESULTCODE HandleGetCharInfo(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleGetCharInfo(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -304,7 +305,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, strCharInfo);
 	}
 
-	RESULTCODE HandleReserveCharName(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleReserveCharName(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		ReserveCharNameParameter stParam;
 		if (!m_JsonMaker.ToReserveCharNameParameter(param_, stParam))
@@ -329,7 +330,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
-	RESULTCODE HandleCancelCharNameReserve(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleCancelCharNameReserve(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		// 같은 파라미터를 사용한다.
 		ReserveCharNameParameter stParam;
@@ -358,7 +359,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
-	RESULTCODE HandleCreateChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleCreateChar(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		CreateCharParameter stParam;
 		if (!m_JsonMaker.ToCreateCharParameter(param_, stParam))
@@ -388,7 +389,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, jstr);
 	}
 
-	RESULTCODE HandleSelectChar(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleSelectChar(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -428,6 +429,7 @@ private:
 		if (pInfo == nullptr)
 		{
 			std::cerr << "ReqHandler::HandleSelectChar : info nullptr\n";
+			return SendResultMsg(userindex_, ReqNo, RESULTCODE::UNDEFINED);
 		}
 
 		pUser->SetCharInfo(pInfo);
@@ -454,7 +456,7 @@ private:
 		return rescode;
 	}
 
-	RESULTCODE HandleGetInven(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleGetInven(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		GetInvenParameter stParam;
 		if (!m_JsonMaker.ToGetInvenParameter(param_, stParam))
@@ -473,7 +475,7 @@ private:
 	}
 
 	// 클라이언트에서 자기 데미지는 시간변수를 이용해 난수를 이용한 시뮬레이션을 해도 될듯..
-	RESULTCODE HandlePerformSkill(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandlePerformSkill(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		PerformSkillParameter stParam;
 		if (!m_JsonMaker.ToPerformSkillParameter(param_, stParam))
@@ -537,7 +539,7 @@ private:
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE HandleGetObject(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleGetObject(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		GetObjectParameter stParam;
 		if (!m_JsonMaker.ToGetObjectParameter(param_, stParam))
@@ -576,7 +578,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
-	RESULTCODE HandleGetSalesList(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleGetSalesList(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		GetSalesListParameter stParam;
 
@@ -596,7 +598,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, res);
 	}
 
-	RESULTCODE HandleBuyItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleBuyItem(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		BuyItemParameter stParam;
 		if (!m_JsonMaker.ToBuyItemParameter(param_, stParam))
@@ -649,7 +651,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS, strInven);
 	}
 
-	RESULTCODE HandleDropItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleDropItem(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		DropItemParameter stParam;
 		if (!m_JsonMaker.ToDropItemParameter(param_, stParam))
@@ -697,7 +699,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
-	RESULTCODE HandleSwapInven(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleSwapInven(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		SwapInvenParameter stParam;
 		if (!m_JsonMaker.ToSwapInvenParameter(param_, stParam))
@@ -721,7 +723,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
-	RESULTCODE HandleUseItem(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleUseItem(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		// DB에 사용효과관련 테이블도 만들어야겠다.
 		// HP회복 MP회복 STR증가 DEX증가 INT증가 MEN증가 PHYSICATT증가 MAGICATT증가 ...
@@ -739,7 +741,7 @@ private:
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE HandleMoveMap(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleMoveMap(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		MoveMapParameter stParam;
 		if (!m_JsonMaker.ToMoveMapParameter(param_, stParam))
@@ -798,7 +800,7 @@ private:
 		return rescode;
 	}
 
-	RESULTCODE HandleSetGold(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleSetGold(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 		int charcode = pUser->GetCharCode();
@@ -810,7 +812,7 @@ private:
 		return SendResultMsg(userindex_, ReqNo, RESULTCODE::SUCCESS);
 	}
 
-	RESULTCODE HandleChatEveryone(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandleChatEveryone(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		User* pUser = m_UserManager.GetUserByConnIndex(userindex_);
 
@@ -837,7 +839,7 @@ private:
 	}
 
 	// 해당 처리는 클라이언트에게 결과반환을 하지 않는다.
-	RESULTCODE HandlePosInfo(const int userindex_, const unsigned int ReqNo, const std::string& param_)
+	RESULTCODE HandlePosInfo(const unsigned short userindex_, const unsigned int ReqNo, const std::string& param_)
 	{
 		PosInfoParameter stParam;
 		if (!m_JsonMaker.ToPosInfoParameter(param_, stParam))
@@ -853,7 +855,7 @@ private:
 		return RESULTCODE::SUCCESS;
 	}
 
-	RESULTCODE SendResultMsg(const int userIndex_, const unsigned int ReqNo_,
+	RESULTCODE SendResultMsg(const unsigned short userIndex_, const unsigned int ReqNo_,
 		RESULTCODE resCode_, std::string& optionalMsg_)
 	{
 		ResMessage stResultMsg{ ReqNo_, resCode_, optionalMsg_ };
@@ -864,21 +866,23 @@ private:
 			return RESULTCODE::UNDEFINED;
 		}
 
-		PacketData* packet = AllocatePacket();
+		PacketData* packet = m_PacketPool->Allocate();
 
-		packet->Init(userIndex_, jsonmsg);
+		packet->Init(jsonmsg);
 		
-		if (!SendMsgFunc(packet))
+		if (!SendMsgFunc(userIndex_, packet))
 		{
 			// 송신 실패
+			m_PacketPool->Deallocate(packet);
 			return RESULTCODE::UNDEFINED;
 		}
 
 		// 송신 성공
+		m_PacketPool->Deallocate(packet);
 		return resCode_;
 	}
 	
-	RESULTCODE SendResultMsg(const int userIndex_, const unsigned int ReqNo_,
+	RESULTCODE SendResultMsg(const unsigned short userIndex_, const unsigned int ReqNo_,
 		RESULTCODE resCode_, std::string&& optionalMsg_ = std::string())
 	{
 		ResMessage stResultMsg{ ReqNo_, resCode_, optionalMsg_ };
@@ -889,22 +893,24 @@ private:
 			return RESULTCODE::UNDEFINED;
 		}
 
-		PacketData* packet = AllocatePacket();
+		PacketData* packet = m_PacketPool->Allocate();
 
-		packet->Init(userIndex_, jsonmsg);
+		packet->Init(jsonmsg);
 
-		if (!SendMsgFunc(packet))
+		if (!SendMsgFunc(userIndex_, packet))
 		{
 			// 송신 실패
 			std::cerr << "ReqHandler::SendResultMsg : Failed to Send\n";
+			m_PacketPool->Deallocate(packet);
 			return RESULTCODE::UNDEFINED;
 		}
 
+		m_PacketPool->Deallocate(packet);
 		// 송신 성공
 		return resCode_;
 	}
 
-	void SendInfoMsgToUsers(std::map<int, User*>& users, RESULTCODE rescode_, std::string& msg_, int exceptUsercode_ = 0)
+	void SendInfoMsgToUsers(std::map<unsigned short, User*>& users, RESULTCODE rescode_, std::string& msg_, int exceptUsercode_ = 0)
 	{
 		if (users.size() == 0)
 		{
@@ -919,79 +925,41 @@ private:
 			return;
 		}
 
-		PacketData* packet = AllocatePacket();
+		PacketData* packet = m_PacketPool->Allocate();
 		if (packet == nullptr)
 		{
 			std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Allocate Packet\n";
 			return;
 		}
 
-		auto first = users.begin();
+		packet->Init(jsonmsg);
 
-		bool bExceptFirst = true;
-
-		if (first->second == nullptr)
+		for (auto itr = users.begin(); itr != users.end(); itr++)
 		{
-			std::cerr << "ReqHandler::SendInfoMsgToUsers : User* null ref.\n";
-		}
-		else
-		{
-			bExceptFirst = (first->second->GetUserCode() == exceptUsercode_);
-		}
-
-		packet->Init(first->first, jsonmsg);
-
-		for (auto& itr = ++first; itr != users.end(); itr++)
-		{
-			if (itr->second == nullptr)
+			if (itr->second == nullptr) // User* nullptr
 			{
 				std::cerr << "ReqHandler::SendInfoMsgToUsers : User* null ref.\n";
 				continue;
 			}
 
-			if (itr->second->GetUserCode() == exceptUsercode_)
+			if (itr->second->GetCharCode() == exceptUsercode_) // User* -> GetUserCode() == exceptUserCode_.
 			{
 				std::cout << "ReqHandler::SendInfoMsgToUsers : except usercode : " << itr->second->GetUserCode() << '\n';
 				continue;
 			}
 
-			PacketData* tmpPacket = AllocatePacket();
-
-			if (tmpPacket == nullptr)
+			if (!SendMsgFunc(itr->first, packet))
 			{
-				DeallocatePacket(packet);
-				std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Allocate Packet\n";
-				return;
-			}
-
-			tmpPacket->Init(packet, itr->first);
-			if (!SendMsgFunc(tmpPacket))
-			{
-				// 송신 실패
-				DeallocatePacket(packet);
-				DeallocatePacket(tmpPacket);
 				std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Send Msg\n";
+				m_PacketPool->Deallocate(packet);
 				return;
 			}
-		}
-
-		if (bExceptFirst)
-		{
-			std::cout << "ReqHandler::SendInfoMsgToUsers : except usercode\n";
-			return;
-		}
-
-		if (!SendMsgFunc(packet))
-		{
-			// 송신 실패
-			DeallocatePacket(packet);
-			std::cerr << "ReqHandler::SendInfoMsgToUsers : Failed to Send Msg\n";
 		}
 
 		return;
 	}
 
-	void SendInfoMsg(const int userindex_, RESULTCODE rescode_, std::string& msg_)
+	void SendInfoMsg(const unsigned short userindex_, RESULTCODE rescode_, std::string& msg_)
 	{
 		ResMessage stResultMsg{ 0, rescode_, msg_ };
 		std::string jsonmsg;
@@ -1001,22 +969,23 @@ private:
 			return;
 		}
 
-		PacketData* packet = AllocatePacket();
+		PacketData* packet = m_PacketPool->Allocate();
 		if (packet == nullptr)
 		{
 			std::cerr << "ReqHandler::SendInfoMsg : Failed to Allocate Packet\n";
 			return;
 		}
 
-		packet->Init(userindex_, jsonmsg);
+		packet->Init(jsonmsg);
 
-		if (!SendMsgFunc(packet))
+		if (!SendMsgFunc(userindex_, packet))
 		{
 			// 송신 실패
-			DeallocatePacket(packet);
+			m_PacketPool->Deallocate(packet);
 			std::cerr << "ReqHandler::SendInfoMsg : Failed to Send Msg\n";
 		}
 
+		m_PacketPool->Deallocate(packet);
 		return;
 	}
 
@@ -1044,7 +1013,9 @@ private:
 
 	unsigned short m_MaxClient;
 
-	typedef RESULTCODE(ReqHandler::* REQ_HANDLE_FUNC)(const int, const unsigned int, const std::string&);
+	typedef RESULTCODE(ReqHandler::* REQ_HANDLE_FUNC)(const unsigned short, const unsigned int, const std::string&);
 
 	std::unordered_map<MessageType, REQ_HANDLE_FUNC> Actions;
+
+	std::unique_ptr<NetworkPacket::PacketPool> m_PacketPool;
 };

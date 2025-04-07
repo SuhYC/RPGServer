@@ -68,12 +68,8 @@ public:
 
 	void Start()
 	{
-		auto AlloFunc = [this]() -> PacketData* { return AllocatePacket(); };
-		auto DealloFunc = [this](PacketData* pPacket) { DeallocatePacket(pPacket); };
-		auto SendMsgFunc = [this](PacketData* pPacket) -> bool {return SendMsg(pPacket); };
+		auto SendMsgFunc = [this](unsigned short connectionIndex, PacketData* pPacket) -> bool {return SendMsg(connectionIndex, pPacket); };
 
-		m_ReqHandler.AllocatePacket = AlloFunc;
-		m_ReqHandler.DeallocatePacket = DealloFunc;
 		m_ReqHandler.SendMsgFunc = SendMsgFunc;
 
 		m_ReqHandler.Init(m_MaxClient);
@@ -100,18 +96,26 @@ private:
 		// 링버퍼로 구조를 바꾼다고 하면 받은 데이터를 패킷 크기에 맞게 재단하여 ReqHandler에 요청해야한다.
 		// 패킷의 크기보다 받은 데이터가 적다면 보관할 장소도 필요하다. (아마도 Connection에 저장하는게 좋겠지?)
 		
-		std::cout << "RPGServer::OnReceive : RecvMsg : " << pData_ << "\n";
+		//std::cout << "RPGServer::OnReceive : RecvMsg : " << pData_ << "\n";
 
 		StoreMsg(index_, pData_, ioSize_);
 
+		char buf[MAX_SOCKBUF];
+
 		while (true)
 		{
-			std::string req = GetMsg(index_);
 
-			if (req == std::string())
+			//std::string req = GetMsg(index_);
+
+			ZeroMemory(buf, MAX_SOCKBUF);
+			unsigned int len = GetMsg(index_, buf);
+
+			if (len == 0)
 			{
 				break;
 			}
+
+			std::string req(buf);
 
 			if (!m_ReqHandler.HandleReq(index_, req))
 			{

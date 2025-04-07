@@ -78,8 +78,6 @@ public:
 			return false;
 		}
 
-		//std::lock_guard<std::mutex> guard(m_mutex);
-
 		// 남은 공간 초과
 		if ((m_WritePos > m_ReadPos && (m_WritePos + size_) >= m_ReadPos + m_Capacity) ||
 			(m_WritePos < m_ReadPos && (m_WritePos + size_) >= m_ReadPos))

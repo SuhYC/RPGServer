@@ -16,7 +16,7 @@
         memcpy(pRemote, lpOutputBuffer + localSize, remoteSize); \
     } while (0)
 
-const int MAX_RINGBUFFER_SIZE = 4000;
+const int MAX_RINGBUFFER_SIZE = 4096;
 
 class Connection
 {
@@ -120,10 +120,12 @@ public:
 
 		std::lock_guard<std::mutex> guard(m_mutex);
 
-		m_SendBuffer.enqueue(pData_->GetBlock()->pData, pData_->GetBlock()->dataSize);
+		m_SendBuffer.enqueue(pData_->GetData(), pData_->GetSize());
 
-		//if (m_SendBuffer.Size() == pData_->GetBlock()->dataSize) // 송신중인 데이터를 빼다보니 문제가 생길것 같다.
-		if(m_SendingBuffer[0] == NULL)
+		DWORD header = 0;
+		CopyMemory(&header, m_SendingBuffer, sizeof(DWORD));
+
+		if(header == 0) // 헤더가 있으면 누군가 전송중, 전송완료되면 버퍼를 비우기 마련.
 		{
 			SendIO();
 		}
@@ -133,7 +135,6 @@ public:
 
 	bool SendIO()
 	{
-		
 		int datasize = m_SendBuffer.dequeue(m_SendingBuffer, MAX_SOCKBUF-1);
 
 		ZeroMemory(&m_SendOverlapped, sizeof(stOverlappedEx));
@@ -158,7 +159,7 @@ public:
 			return false;
 		}
 
-		std::cout << "Connection::SendIO : SendMsg : " << m_SendingBuffer << '\n';
+		//std::cout << "Connection::SendIO : SendMsg : " << m_SendingBuffer << '\n';
 
 		return true;
 	}
@@ -239,39 +240,36 @@ public:
 		return m_RecvBuffer.enqueue(str_, size_);
 	}
 
-	std::string GetReqMessage()
+	unsigned int GetReqMessage(char* out_)
 	{
 		std::lock_guard<std::mutex> guard(m_mutex);
 
-		char cstr[MAX_SOCKBUF + 1] = { 0 };
+		char cstr[MAX_RINGBUFFER_SIZE] = { 0 };
 
-		int len = m_RecvBuffer.dequeue(cstr, MAX_SOCKBUF);
+		int len = m_RecvBuffer.dequeue(cstr, MAX_RINGBUFFER_SIZE);
 
 		if (len == 0)
 		{
-			return std::string();
+			return 0;
 		}
 
-		std::string str(cstr);
+		if (len < 5) // 페이로드 부분이 없음.
+		{
+			m_RecvBuffer.enqueue(cstr, len);
+			return 0;
+		}
 
-		std::string ret;
-		CheckStringSize(str, ret); // 재단하고 남은 문자열은 str, 처리할 수 있는 문자열은 ret.
+		unsigned int remainSize = CheckStringSize(cstr, len, out_);
 
-		// 남은 데이터는 다시 저장한다.
-		strcpy_s(cstr, str.c_str());
-		m_RecvBuffer.enqueue(cstr, str.length());
+		if (remainSize == len)
+		{
+			m_RecvBuffer.enqueue(cstr, len);
+			return 0;
+		}
 
-		// UTF-8로 인코딩 된 문자열을 CP949 (CP_ACP를 통해 PC설정값 호출)로 인코딩해서 리턴
+		m_RecvBuffer.enqueue(cstr, remainSize);
 
-		int wideStrSize = MultiByteToWideChar(CP_UTF8, 0, ret.c_str(), -1, NULL, 0);
-		std::wstring wideStr(wideStrSize, 0);
-		MultiByteToWideChar(CP_UTF8, 0, ret.c_str(), -1, &wideStr[0], wideStrSize);
-
-		int utf8StrSize = WideCharToMultiByte(CP_ACP, 0, wideStr.c_str(), -1, NULL, 0, NULL, NULL);
-		std::string acpStr(utf8StrSize, 0);
-		WideCharToMultiByte(CP_ACP, 0, wideStr.c_str(), -1, &acpStr[0], utf8StrSize, NULL, NULL);
-
-		return ret;
+		return (unsigned int)len - remainSize - sizeof(unsigned int);
 	}
 
 private:
@@ -313,6 +311,8 @@ private:
 
 	bool CheckStringSize(std::string& str_, std::string& out_)
 	{
+		unsigned int header = 0;
+
 		if (str_[0] != '[')
 		{
 			std::cerr << "Connection::CheckStringSize : Not Started with [\n";
@@ -356,45 +356,31 @@ private:
 		return false;
 	}
 
-	bool CheckWstringSize(std::wstring& str_, std::wstring& out_)
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <param name="str_"></param>
+	/// <param name="size_"></param>
+	/// <param name="out_"></param>
+	/// <returns>remain string's size</returns>
+	unsigned int CheckStringSize(char* str_, unsigned int size_, char* out_)
 	{
-		if (str_[0] != '[')
+		unsigned int header;
+		CopyMemory(&header, str_, sizeof(unsigned int));
+
+		//std::cout << header << "bytes.\n";
+		if (size_ < sizeof(unsigned int) + header)
 		{
-			std::wcerr << L"Connection::CheckWStringSize : Not Started with [\n";
-			std::wcerr << L"Connection::CheckWStringSize : wstring : " << str_ << L'\n';
-			return false;
+			//std::cout << size_ << "bytes. Not Enough.\n";
+			return size_;
 		}
-
-		size_t pos = str_.find(']');
-
-		if (pos == std::string::npos)
+		else
 		{
-			return false;
+			//std::cout << size_ << "bytes. Enough.\n";
+			CopyMemory(out_, str_ + sizeof(unsigned int), header);
+			CopyMemory(str_, str_ + header + sizeof(unsigned int), size_ - header - sizeof(unsigned int));
+			return size_ - sizeof(unsigned int) - header;
 		}
-
-		try
-		{
-			std::wstring header = str_.substr(1, pos);
-			int size = std::stoi(header);
-
-			if (str_.size() > pos + size)
-			{
-				out_ = str_.substr(pos + 1, size);
-				str_ = str_.substr(pos + size + 1);
-
-				return true;
-			}
-		}
-		catch (std::invalid_argument& e)
-		{
-			std::cerr << "Connection::CheckWStringSize : " << e.what();
-		}
-		catch (...)
-		{
-			std::cerr << "Connection::CheckWStringSize : Some Err\n";
-		}
-
-		return false;
 	}
 
 	std::wstring utf8_to_wstring(const std::string& str) {

@@ -71,8 +71,8 @@ public:
 		return;
 	}
 
-	std::function<void(std::map<int, User*>&, RESULTCODE, std::string&, int)> SendInfoToUsersFunc;
-	std::function<void(const int, RESULTCODE, std::string&)> SendInfoFunc;
+	std::function<void(std::map<unsigned short, User*>&, RESULTCODE, std::string&, int)> SendInfoToUsersFunc;
+	std::function<void(const unsigned short, RESULTCODE, std::string&)> SendInfoFunc;
 
 private:
 	RPG::Map* CreateMap(int mapcode_)

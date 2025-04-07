@@ -41,13 +41,13 @@ namespace RPG
 			m_NextSpawnTime = std::chrono::steady_clock::now() + std::chrono::seconds(SPAWN_INTERVAL_SEC);
 		}
 
-		void UserExit(const int connectionIdx_)
+		void UserExit(const unsigned short connectionIdx_)
 		{
 			std::lock_guard<std::mutex> guard(m_userMutex);
 			users.erase(connectionIdx_);
 		}
 
-		void UserEnter(const int connectionIdx_, User* pUser_)
+		void UserEnter(const unsigned short connectionIdx_, User* pUser_)
 		{
 			std::lock_guard<std::mutex> guard(m_userMutex);
 			pUser_->SetMapCode(m_mapcode);
@@ -122,7 +122,7 @@ namespace RPG
 		// std::pair<0, ?> : no hit
 		// std::pair<monstercode, 0> : getDamaged
 		// std::pair<monstercode, charcode> : killed monster
-		std::pair<int, int> AttackMonster(const int connectionIdx_, const int Monsteridx_, const unsigned int damage_)
+		std::pair<int, int> AttackMonster(const unsigned short connectionIdx_, const int Monsteridx_, const unsigned int damage_)
 		{
 			if (Monsteridx_ >= MAX_MONSTER_COUNT_ON_MAP || Monsteridx_ < 0)
 			{
@@ -276,7 +276,7 @@ namespace RPG
 		}
 
 		//----- func pointer
-		std::function<void(std::map<int,User*>&, RESULTCODE, std::string&, int)> SendInfoToUsersFunc;
+		std::function<void(std::map<unsigned short,User*>&, RESULTCODE, std::string&, int)> SendInfoToUsersFunc;
 		std::function<void(const int, RESULTCODE, std::string&)> SendInfoFunc;
 		
 		std::function<ItemObject* ()> AllocateItemObject;
@@ -418,12 +418,12 @@ namespace RPG
 			SendInfoToUsers(users, RESULTCODE::SEND_INFO_OBJECT_OBTAINED, str);
 		}
 
-		void SendInfoToUsers(std::map<int, User*>& users, RESULTCODE rescode, std::string& msg, int exceptUsercode = 0)
+		void SendInfoToUsers(std::map<unsigned short, User*>& users, RESULTCODE rescode, std::string& msg, int exceptUsercode = 0)
 		{
 			SendInfoToUsersFunc(users, rescode, msg, exceptUsercode);
 		}
 
-		std::map<int, User*> users; // connidx, userData 
+		std::map<unsigned short, User*> users; // connidx, userData 
 		std::map<unsigned int, ItemObject*> m_itemObjects;
 
 		Monster m_Monsters[MAX_MONSTER_COUNT_ON_MAP];
